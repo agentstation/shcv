@@ -186,9 +186,50 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### Development Setup
 
 1. Clone the repository
-2. Install dependencies: `go mod download`
-3. Run tests: `go test ./...`
-4. Build: `go build`
+2. Install Devbox (recommended):
+   ```bash
+   make install-devbox
+   ```
+3. Start Devbox shell:
+   ```bash
+   make devbox
+   ```
+4. Install dependencies:
+   ```bash
+   make install
+   ```
+5. Run all checks:
+   ```bash
+   make check
+   ```
+
+### Development Commands
+
+```bash
+# Format code
+make fmt
+
+# Run tests
+make test
+
+# Run tests with coverage
+make coverage
+
+# Run linting
+make lint
+
+# Run all checks (vet, lint, test)
+make check
+
+# Build the binary
+make build
+
+# Generate documentation
+make generate
+
+# Clean up temporary files
+make clean
+```
 
 ### Code Style
 
