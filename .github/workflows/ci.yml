@@ -2,36 +2,47 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [master]
+    tags: [ "v*" ]
   pull_request:
-    branches: [ main, master ]
+    branches: [master]
 
 jobs:
-  test:
-    name: Test
+  lint-vet-build-test:
+    name: Lint, Vet, Build, Test
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22'
-          cache: true
-      
-      - name: Install dependencies
-        run: make install
-      
-      - name: Run tests
-        run: make test
-      
-      - name: Run linter
-        run: make lint
-      
-      - name: Build
-        run: make build
+    strategy:
+      matrix:
+        go-version: ['1.22']
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.txt 
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+        cache: true
+
+    - name: Install Dependencies
+      run: make install
+    
+    - name: Lint Go Code
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+
+    - name: Vet Go Code
+      run: make vet
+    
+    - name: Run Tests and Generate Coverage
+      run: make coverage
+    
+    - name: Build
+      run: make build
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
