@@ -9,6 +9,42 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// RootCmd is the root command for shcv
+var RootCmd = &cobra.Command{
+	Use:   "shcv [chart-directory]",
+	Short: "Sync Helm Chart Values",
+	Long: `shcv (Sync Helm Chart Values) is a tool that helps maintain Helm chart values
+by automatically synchronizing values.yaml with the parameters used in your Helm templates.
+
+It scans all template files for {{ .Values.* }} expressions and ensures they are properly
+defined in your values file, including handling of default values and nested structures.
+
+Example:
+  shcv ./my-helm-chart`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		return processChart(args[0], verbose)
+	},
+	Version: shcv.Version,
+}
+
+func init() {
+	RootCmd.Flags().BoolP("verbose", "v", false, "verbose output showing all found references")
+	RootCmd.SetVersionTemplate(`{{.Version}}
+`)
+
+	// Add example usage
+	RootCmd.Example = `  # Process chart in current directory
+  shcv .
+
+  # Process chart with verbose output
+  shcv -v ./my-helm-chart
+
+  # Show version
+  shcv --version`
+}
+
 func processChart(chartDir string, verbose bool) error {
 	chart, err := shcv.NewChart(chartDir, nil) // Use default options
 	if err != nil {
@@ -51,39 +87,7 @@ func processChart(chartDir string, verbose bool) error {
 }
 
 func main() {
-	var rootCmd = &cobra.Command{
-		Use:   "shcv [chart-directory]",
-		Short: "Sync Helm Chart Values",
-		Long: `shcv (Sync Helm Chart Values) is a tool that helps maintain Helm chart values
-by automatically synchronizing values.yaml with the parameters used in your Helm templates.
-
-It scans all template files for {{ .Values.* }} expressions and ensures they are properly
-defined in your values file, including handling of default values and nested structures.
-
-Example:
-  shcv ./my-helm-chart`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			verbose, _ := cmd.Flags().GetBool("verbose")
-			return processChart(args[0], verbose)
-		},
-		Version: shcv.Version,
-	}
-
-	rootCmd.Flags().BoolP("verbose", "v", false, "verbose output showing all found references")
-	rootCmd.SetVersionTemplate(`{{printf "%s\n" .Version}}`)
-
-	// Add example usage
-	rootCmd.Example = `  # Process chart in current directory
-  shcv .
-
-  # Process chart with verbose output
-  shcv -v ./my-helm-chart
-
-  # Show version
-  shcv --version`
-
-	if err := rootCmd.Execute(); err != nil {
+	if err := RootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
