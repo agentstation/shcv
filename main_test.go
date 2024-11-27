@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func captureOutput(f func()) string {
+func captureOutput(t *testing.T, f func()) string {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -22,7 +22,10 @@ func captureOutput(f func()) string {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, err := buf.ReadFrom(r)
+	if err != nil {
+		t.Fatalf("Failed to read from buffer: %v", err)
+	}
 	return buf.String()
 }
 
@@ -59,7 +62,7 @@ spec:
 	assert.NoError(t, err)
 
 	// Test with verbose flag first to see the success message
-	output := captureOutput(func() {
+	output := captureOutput(t, func() {
 		err := processChart(tmpDir, true)
 		assert.NoError(t, err)
 	})

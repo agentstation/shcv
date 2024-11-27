@@ -17,9 +17,21 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Coverage file
+coverage.txt
+coverage.out
+
 # Go workspace file
 go.work
 go.work.sum
 
 # env file
 .env
+
+# darwin system files
+.DS_Store
+
+# devbox files
+.devbox/
+
+# End of https://www.toptal.com/developers/gitignore/api/go

@@ -97,7 +97,7 @@ const Version = "1.0.0"
 ```
 
 <a name="Chart"></a>
-## type [Chart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L34-L49>)
+## type [Chart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L33-L48>)
 
 Chart represents a Helm chart structure and manages its values and templates. It provides functionality to scan templates for value references and ensure all referenced values are properly defined in values.yaml.
 
@@ -120,7 +120,7 @@ type Chart struct {
 ```
 
 <a name="NewChart"></a>
-### func [NewChart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L95>)
+### func [NewChart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L94>)
 
 ```go
 func NewChart(dir string, opts *Options) (*Chart, error)
@@ -129,7 +129,7 @@ func NewChart(dir string, opts *Options) (*Chart, error)
 NewChart creates a new Chart instance for processing a Helm chart. It validates the chart directory and initializes the chart with the given options. If opts is nil, default options are used.
 
 <a name="Chart.FindTemplates"></a>
-### func \(\*Chart\) [FindTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L158>)
+### func \(\*Chart\) [FindTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L157>)
 
 ```go
 func (c *Chart) FindTemplates() error
@@ -138,7 +138,7 @@ func (c *Chart) FindTemplates() error
 FindTemplates discovers all template files in the chart's templates directory. It looks for files with .yaml, .yml, or .tpl extensions. Returns an error if the templates directory cannot be accessed.
 
 <a name="Chart.LoadValues"></a>
-### func \(\*Chart\) [LoadValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L140>)
+### func \(\*Chart\) [LoadValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L139>)
 
 ```go
 func (c *Chart) LoadValues() error
@@ -147,7 +147,7 @@ func (c *Chart) LoadValues() error
 LoadValues loads the current values from the values.yaml file. If the file doesn't exist, an empty values map is initialized. Returns an error if the file exists but cannot be read or parsed.
 
 <a name="Chart.ParseTemplates"></a>
-### func \(\*Chart\) [ParseTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L179>)
+### func \(\*Chart\) [ParseTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L178>)
 
 ```go
 func (c *Chart) ParseTemplates() error
@@ -156,7 +156,7 @@ func (c *Chart) ParseTemplates() error
 ParseTemplates scans all discovered templates for .Values references. It identifies both simple references and those with default values. The references are stored in the Chart's References slice.
 
 <a name="Chart.UpdateValues"></a>
-### func \(\*Chart\) [UpdateValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L275>)
+### func \(\*Chart\) [UpdateValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L274>)
 
 ```go
 func (c *Chart) UpdateValues() error
@@ -165,7 +165,7 @@ func (c *Chart) UpdateValues() error
 UpdateValues ensures all referenced values exist in values.yaml. It adds missing values with appropriate defaults and updates the file atomically. The operation is skipped if no changes are needed.
 
 <a name="Options"></a>
-## type [Options](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L68-L75>)
+## type [Options](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L67-L74>)
 
 Options configures the behavior of Chart processing. It allows customization of file locations and default values.
 
@@ -181,7 +181,7 @@ type Options struct {
 ```
 
 <a name="DefaultOptions"></a>
-### func [DefaultOptions](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L79>)
+### func [DefaultOptions](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L78>)
 
 ```go
 func DefaultOptions() *Options
@@ -190,7 +190,7 @@ func DefaultOptions() *Options
 DefaultOptions returns the default configuration options for Chart processing. This includes standard file locations and common default values.
 
 <a name="ValueRef"></a>
-## type [ValueRef](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L20-L29>)
+## type [ValueRef](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L19-L28>)
 
 ValueRef represents a Helm value reference found in templates. It tracks where values are used in templates and their default values if specified.
 

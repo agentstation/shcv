@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -213,7 +212,7 @@ func (c *Chart) ParseTemplates() error {
 				// Convert numeric default to string
 				c.References = append(c.References, ValueRef{
 					Path:         match[1],
-					DefaultValue: fmt.Sprintf("%s", match[2]), // Ensure numeric values are stored as strings
+					DefaultValue: match[2],
 					SourceFile:   template,
 					LineNumber:   lineNum + 1,
 				})
@@ -316,10 +315,8 @@ func (c *Chart) UpdateValues() error {
 			}
 
 			if value != "" {
-				// Convert numeric values to strings
-				if _, err := strconv.Atoi(value); err == nil {
-					value = fmt.Sprintf("%s", value)
-				}
+				// Value is already a string, no conversion needed since strconv.Atoi
+				// would only succeed if the string represents a valid integer
 				setNestedValue(c.Values, ref.Path, value)
 				c.Changed = true
 			}
