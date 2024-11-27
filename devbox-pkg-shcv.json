@@ -1,0 +1,26 @@
+{
+  "name": "shcv",
+  "version": "0.1.0",
+  "platforms": ["aarch64-linux", "x86_64-linux", "aarch64-darwin", "x86_64-darwin"],
+  "description": "A command-line tool for managing shell configurations and variables",
+  "homepage": "https://github.com/agentstation/shcv",
+  "license": "MIT",
+  "dependencies": [],
+  "env": {
+    "PATH": "${root}/bin:${PATH}"
+  },
+  "install": {
+    "script": [
+      "mkdir -p ${root}/bin",
+      "ARCH=$(uname -m)",
+      "OS=$(uname -s | tr '[:upper:]' '[:lower:]')",
+      "if [ \"${ARCH}\" = \"x86_64\" ]; then ARCH=\"x86_64\"; elif [ \"${ARCH}\" = \"arm64\" ]; then ARCH=\"arm64\"; fi",
+      "RELEASE_URL=$(curl -s https://api.github.com/repos/agentstation/shcv/releases/latest | grep browser_download_url | grep ${OS} | grep ${ARCH} | cut -d '\"' -f 4)",
+      "curl -L ${RELEASE_URL} -o shcv.tar.gz",
+      "tar xzf shcv.tar.gz",
+      "mv shcv ${root}/bin/",
+      "chmod +x ${root}/bin/shcv",
+      "rm shcv.tar.gz"
+    ]
+  }
+} 
