@@ -95,21 +95,20 @@ check: vet lint test ## Run all static code checks (vet, lint and test)
 ##@ Build
 
 .PHONY: build
-build: ## Build the shvc binary
-	@echo "Building shvc binary..."
-	@$(MAKE) go-generate
+build: ## Build the shcv binary
 	@$(MAKE) go-build
-	@echo "Compiled shvc binary => tmp/bin/shvc"
+	@echo "Compiled shcv binary => tmp/bin/shcv"
 
 .PHONY: build-install
-build-install: ## Install dependencies and build the shvc binary
+build-install: ## Install dependencies and build the shcv binary
 	@$(MAKE) install
 	@$(MAKE) build
 
 .PHONY: go-build
 go-build: ## Build Go application
-	@echo "Building shvc binary..."
-	@CGO_ENABLED=0 go build -o tmp/bin/shvc -ldflags="-s -w" ./cmd/shvc/...
+	@echo "Building shcv binary..."
+	@mkdir -p tmp/bin
+	@CGO_ENABLED=0 go build -o tmp/bin/shcv -ldflags="-s -w" ./cmd/shcv
 
 ##@ Clean Up
 

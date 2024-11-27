@@ -12,7 +12,7 @@ builds:
     goarch:
       - amd64
       - arm64
-    main: ./cmd/shvc
+    main: ./cmd/shcv
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
