@@ -2,6 +2,8 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/agentstation/shcv)](https://goreportcard.com/report/github.com/agentstation/shcv)
 [![GoDoc](https://godoc.org/github.com/agentstation/shcv?status.svg)](https://godoc.org/github.com/agentstation/shcv)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/agentstation/uuidkey/ci.yaml?style=flat-square)](https://github.com/agentstation/uuidkey/actions)
+[![codecov](https://codecov.io/gh/agentstation/shcv/graph/badge.svg?token=7A0O794SOM)](https://codecov.io/gh/agentstation/shcv)
 [![License](https://img.shields.io/github/license/agentstation/shcv.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/agentstation/shcv/releases)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D%201.21-blue)](go.mod)
