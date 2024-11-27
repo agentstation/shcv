@@ -31,7 +31,11 @@ func executeCommand(args ...string) (string, error) {
 	w.Close()
 	os.Stdout = old
 
-	buf.ReadFrom(r)
+	// Update to handle ReadFrom error
+	_, readErr := buf.ReadFrom(r)
+	if readErr != nil {
+		return "", readErr
+	}
 	return buf.String(), err
 }
 
