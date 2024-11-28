@@ -12,7 +12,7 @@ import (
 )
 
 // Version is the current version of the shcv package
-const Version = "1.0.0"
+const Version = "1.0.3"
 
 // ValueRef represents a Helm value reference found in templates.
 // It tracks where values are used in templates and their default values if specified.

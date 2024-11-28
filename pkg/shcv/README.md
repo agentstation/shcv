@@ -10,7 +10,7 @@ Package shcv provides functionality to synchronize Helm chart values by analyzin
 
 The package helps maintain Helm charts by automatically detecting all \{\{ .Values.\* \}\} expressions in template files and ensuring they are properly defined in the values file. It uses atomic file operations to ensure data integrity and provides robust error handling.
 
-Version: 1.0.0 Requires: Go 1.21 or later
+Version: 1.0.3 Requires: Go 1.21 or later
 
 Basic usage:
 
@@ -93,7 +93,7 @@ Error Handling:
 <a name="Version"></a>Version is the current version of the shcv package
 
 ```go
-const Version = "1.0.0"
+const Version = "1.0.3"
 ```
 
 <a name="Chart"></a>
