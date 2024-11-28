@@ -170,18 +170,18 @@ spec:
 			name: "multiple defaults for same value",
 			template: `
 metadata:
-  domain: {{ .Values.domain | default "example.com" }}
+  domain: {{ .Values.domain | default "dev.example.com" }}
 spec:
-  url: {{ .Values.domain | default "api.example.com" }}`,
+  url: {{ .Values.domain | default "stage.example.com" }}`,
 			want: []ValueRef{
 				{
 					Path:         "domain",
-					DefaultValue: "example.com",
+					DefaultValue: "dev.example.com",
 					LineNumber:   3,
 				},
 				{
 					Path:         "domain",
-					DefaultValue: "api.example.com",
+					DefaultValue: "stage.example.com",
 					LineNumber:   5,
 				},
 			},
@@ -191,17 +191,17 @@ spec:
 			template: `
 spec:
   urls: 
-    - {{ .Values.domain | default "example.com" }}/api
-    - {{ .Values.domain | default "api.example.com" }}/auth`,
+    - {{ .Values.domain | default "dev.example.com" }}/api
+    - {{ .Values.domain | default "stage.example.com" }}/auth`,
 			want: []ValueRef{
 				{
 					Path:         "domain",
-					DefaultValue: "example.com",
+					DefaultValue: "dev.example.com",
 					LineNumber:   4,
 				},
 				{
 					Path:         "domain",
-					DefaultValue: "api.example.com",
+					DefaultValue: "stage.example.com",
 					LineNumber:   5,
 				},
 			},
@@ -249,6 +249,7 @@ func TestDefaultValues(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	templatesDir := filepath.Join(tmpDir, "templates")
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(templatesDir, 0755))
 
 	// Create a template with multiple default values
@@ -256,9 +257,9 @@ func TestDefaultValues(t *testing.T) {
 apiVersion: v1
 kind: Service
 metadata:
-  domain: {{ .Values.domain | default "example.com" }}
+  domain: {{ .Values.domain | default "dev.example.com" }}
 spec:
-  url: {{ .Values.domain | default "api.example.com" }}`
+  url: {{ .Values.domain | default "stage.example.com" }}`
 
 	err = os.WriteFile(filepath.Join(templatesDir, "service.yaml"), []byte(templateContent), 0644)
 	require.NoError(t, err)
@@ -266,15 +267,25 @@ spec:
 	chart, err := NewChart(tmpDir, nil)
 	require.NoError(t, err)
 
+	t.Log("Finding templates...")
 	err = chart.FindTemplates()
 	require.NoError(t, err)
 
+	t.Log("Parsing templates...")
 	err = chart.ParseTemplates()
 	require.NoError(t, err)
 
+	// Add debug logging
+	t.Log("Found references:")
+	for _, ref := range chart.References {
+		t.Logf("Path: %s, Default: %s, Line: %d", ref.Path, ref.DefaultValue, ref.LineNumber)
+	}
+
+	t.Log("Loading values...")
 	err = chart.LoadValues()
 	require.NoError(t, err)
 
+	t.Log("Updating values...")
 	err = chart.UpdateValues()
 	require.NoError(t, err)
 
@@ -282,12 +293,17 @@ spec:
 	data, err := os.ReadFile(filepath.Join(tmpDir, "values.yaml"))
 	require.NoError(t, err)
 
+	t.Logf("Generated values.yaml content:\n%s", string(data))
+
 	var values map[string]interface{}
 	err = yaml.Unmarshal(data, &values)
 	require.NoError(t, err)
 
+	// Debug output
+	t.Logf("Final values: %+v", values)
+
 	// Verify that the last default value was used
-	assert.Equal(t, "api.example.com", values["domain"])
+	assert.Equal(t, "stage.example.com", values["domain"])
 }
 
 func TestValuesHandling(t *testing.T) {

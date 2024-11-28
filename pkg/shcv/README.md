@@ -10,7 +10,7 @@ Package shcv provides functionality to synchronize Helm chart values by analyzin
 
 The package helps maintain Helm charts by automatically detecting all \{\{ .Values.\* \}\} expressions in template files and ensuring they are properly defined in the values file. It uses atomic file operations to ensure data integrity and provides robust error handling.
 
-Version: 1.0.4 Requires: Go 1.21 or later
+Version: 1.0.5 Requires: Go 1.21 or later
 
 Basic usage:
 
@@ -93,7 +93,7 @@ Error Handling:
 <a name="Version"></a>Version is the current version of the shcv package
 
 ```go
-const Version = "1.0.4"
+const Version = "1.0.5"
 ```
 
 <a name="Chart"></a>
@@ -129,7 +129,7 @@ func NewChart(dir string, opts *Options) (*Chart, error)
 NewChart creates a new Chart instance for processing a Helm chart. It validates the chart directory and initializes the chart with the given options. If opts is nil, default options are used.
 
 <a name="Chart.FindTemplates"></a>
-### func \(\*Chart\) [FindTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L157>)
+### func \(\*Chart\) [FindTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L165>)
 
 ```go
 func (c *Chart) FindTemplates() error
@@ -138,7 +138,7 @@ func (c *Chart) FindTemplates() error
 FindTemplates discovers all template files in the chart's templates directory. It looks for files with .yaml, .yml, or .tpl extensions. Returns an error if the templates directory cannot be accessed.
 
 <a name="Chart.LoadValues"></a>
-### func \(\*Chart\) [LoadValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L139>)
+### func \(\*Chart\) [LoadValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L147>)
 
 ```go
 func (c *Chart) LoadValues() error
@@ -147,7 +147,7 @@ func (c *Chart) LoadValues() error
 LoadValues loads the current values from the values.yaml file. If the file doesn't exist, an empty values map is initialized. Returns an error if the file exists but cannot be read or parsed.
 
 <a name="Chart.ParseTemplates"></a>
-### func \(\*Chart\) [ParseTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L178>)
+### func \(\*Chart\) [ParseTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L186>)
 
 ```go
 func (c *Chart) ParseTemplates() error
@@ -156,7 +156,7 @@ func (c *Chart) ParseTemplates() error
 ParseTemplates scans all discovered templates for .Values references. It identifies both simple references and those with default values. The references are stored in the Chart's References slice.
 
 <a name="Chart.UpdateValues"></a>
-### func \(\*Chart\) [UpdateValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L274>)
+### func \(\*Chart\) [UpdateValues](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L275>)
 
 ```go
 func (c *Chart) UpdateValues() error

@@ -5,7 +5,7 @@
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/agentstation/uuidkey/ci.yaml?style=flat-square)](https://github.com/agentstation/uuidkey/actions)
 [![codecov](https://codecov.io/gh/agentstation/shcv/branch/master/graph/badge.svg?token=7A0O794SOM)](https://codecov.io/gh/agentstation/shcv)
 [![License](https://img.shields.io/github/license/agentstation/shcv.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](https://github.com/agentstation/shcv/releases)
+[![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](https://github.com/agentstation/shcv/releases)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D%201.21-blue)](go.mod)
 
 `shcv` is a command-line tool and Go package that helps maintain Helm chart values by automatically synchronizing `values.yaml` with the parameters used in your Helm templates. It scans all template files for `{{ .Values.* }}` expressions and ensures they are properly defined in your values file.

@@ -12,7 +12,7 @@ import (
 )
 
 // Version is the current version of the shcv package
-const Version = "1.0.4"
+const Version = "1.0.5"
 
 // ValueRef represents a Helm value reference found in templates.
 // It tracks where values are used in templates and their default values if specified.
@@ -96,7 +96,6 @@ func NewChart(dir string, opts *Options) (*Chart, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("chart directory cannot be empty")
 	}
-
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, fmt.Errorf("invalid chart directory: %w", err)
@@ -105,6 +104,7 @@ func NewChart(dir string, opts *Options) (*Chart, error) {
 		return nil, fmt.Errorf("path %s is not a directory", dir)
 	}
 
+	// use default options if none are provided
 	if opts == nil {
 		opts = DefaultOptions()
 	} else {
@@ -118,9 +118,17 @@ func NewChart(dir string, opts *Options) (*Chart, error) {
 		}
 		if opts.DefaultValues == nil {
 			opts.DefaultValues = defaultOpts.DefaultValues
+		} else {
+			// Merge custom defaults with default values
+			for k, v := range defaultOpts.DefaultValues {
+				if _, ok := opts.DefaultValues[k]; !ok {
+					opts.DefaultValues[k] = v
+				}
+			}
 		}
 	}
 
+	// Create values file path
 	valuesFile := filepath.Join(dir, opts.ValuesFileName)
 
 	return &Chart{
@@ -178,6 +186,7 @@ func (c *Chart) FindTemplates() error {
 func (c *Chart) ParseTemplates() error {
 	// Map to track the last default value for each path
 	lastDefaults := make(map[string]string)
+	seenRefs := make(map[string]bool)
 
 	for _, template := range c.Templates {
 		content, err := os.ReadFile(template)
@@ -217,21 +226,13 @@ func (c *Chart) ParseTemplates() error {
 			matches = valueRegex.FindAllStringSubmatch(line, -1)
 			for _, match := range matches {
 				path := match[1]
-				// Use the last known default value for this path, if any
-				defaultValue := lastDefaults[path]
+				refKey := fmt.Sprintf("%s:%d:%s", template, lineNum, path)
 
-				// Skip if we already found this exact reference
-				found := false
-				for _, ref := range c.References {
-					if ref.Path == path && ref.SourceFile == template && ref.LineNumber == lineNum+1 {
-						found = true
-						break
-					}
-				}
-				if !found {
+				if !seenRefs[refKey] {
+					seenRefs[refKey] = true
 					c.References = append(c.References, ValueRef{
 						Path:         path,
-						DefaultValue: defaultValue,
+						DefaultValue: lastDefaults[path], // Use the most recent default value
 						SourceFile:   template,
 						LineNumber:   lineNum + 1,
 					})
@@ -272,7 +273,21 @@ func setNestedValue(values map[string]any, path string, value string) {
 // It adds missing values with appropriate defaults and updates the file atomically.
 // The operation is skipped if no changes are needed.
 func (c *Chart) UpdateValues() error {
+	// Create a map to store the last reference for each path
+	lastRefs := make(map[string]ValueRef)
 	for _, ref := range c.References {
+		lastRefs[ref.Path] = ref
+	}
+
+	// Now process only the last reference for each path
+	for _, ref := range lastRefs {
+		// If we have a default value from the template, always use it
+		if ref.DefaultValue != "" {
+			setNestedValue(c.Values, ref.Path, ref.DefaultValue)
+			c.Changed = true
+			continue
+		}
+
 		// Check if value already exists
 		exists := false
 		current := c.Values
@@ -294,16 +309,15 @@ func (c *Chart) UpdateValues() error {
 			}
 		}
 
+		// Only check other default sources if value doesn't exist
 		if !exists {
-			// First check custom default values
-			lastPart := parts[len(parts)-1]
 			value := ""
+			// Check custom default values
+			lastPart := parts[len(parts)-1]
 			if customValue, ok := c.options.DefaultValues[lastPart]; ok {
 				value = customValue
 			} else if customValue, ok := c.options.DefaultValues[ref.Path]; ok {
 				value = customValue
-			} else if ref.DefaultValue != "" {
-				value = ref.DefaultValue
 			} else {
 				// Finally check pattern-based defaults
 				for pattern, defaultValue := range DefaultOptions().DefaultValues {
@@ -315,8 +329,6 @@ func (c *Chart) UpdateValues() error {
 			}
 
 			if value != "" {
-				// Value is already a string, no conversion needed since strconv.Atoi
-				// would only succeed if the string represents a valid integer
 				setNestedValue(c.Values, ref.Path, value)
 				c.Changed = true
 			}
