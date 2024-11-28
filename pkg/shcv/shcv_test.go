@@ -338,3 +338,164 @@ func TestTemplateDiscovery(t *testing.T) {
 	assert.True(t, foundFiles["pod.yaml"])
 	assert.False(t, foundFiles["README.md"])
 }
+
+func TestTemplateParsingErrors(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "helm-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	templatesDir := filepath.Join(tmpDir, "templates")
+	require.NoError(t, os.MkdirAll(templatesDir, 0755))
+
+	t.Run("unreadable template", func(t *testing.T) {
+		// Create a template file with no read permissions
+		templatePath := filepath.Join(templatesDir, "unreadable.yaml")
+		err := os.WriteFile(templatePath, []byte("content"), 0000)
+		require.NoError(t, err)
+
+		chart, err := NewChart(tmpDir, nil)
+		require.NoError(t, err)
+
+		err = chart.FindTemplates()
+		require.NoError(t, err)
+
+		err = chart.ParseTemplates()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "reading template")
+	})
+}
+
+func TestValuesUpdateErrors(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "helm-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	templatesDir := filepath.Join(tmpDir, "templates")
+	require.NoError(t, os.MkdirAll(templatesDir, 0755))
+
+	// Create a test template
+	templateContent := `
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.name }}`
+
+	err = os.WriteFile(filepath.Join(templatesDir, "service.yaml"), []byte(templateContent), 0644)
+	require.NoError(t, err)
+
+	t.Run("unwritable values file directory", func(t *testing.T) {
+		unwritableDir := filepath.Join(tmpDir, "unwritable")
+		require.NoError(t, os.MkdirAll(unwritableDir, 0755))
+
+		// Create templates directory in unwritable dir first
+		unwritableTemplatesDir := filepath.Join(unwritableDir, "templates")
+		require.NoError(t, os.MkdirAll(unwritableTemplatesDir, 0755))
+
+		// Copy template file
+		err = os.WriteFile(filepath.Join(unwritableTemplatesDir, "service.yaml"), []byte(templateContent), 0644)
+		require.NoError(t, err)
+
+		// Create values directory but make it unwritable
+		valuesDir := filepath.Join(unwritableDir)
+		require.NoError(t, os.MkdirAll(valuesDir, 0755))
+		require.NoError(t, os.Chmod(valuesDir, 0555))
+		defer os.Chmod(valuesDir, 0755) // Restore permissions for cleanup
+
+		chart, err := NewChart(unwritableDir, nil)
+		require.NoError(t, err)
+
+		err = chart.FindTemplates()
+		require.NoError(t, err)
+
+		err = chart.ParseTemplates()
+		require.NoError(t, err)
+
+		chart.Changed = true // Force update attempt
+		err = chart.UpdateValues()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "permission denied")
+	})
+
+	t.Run("unwritable values file", func(t *testing.T) {
+		// Create values file with no write permissions
+		valuesPath := filepath.Join(tmpDir, "values.yaml")
+		err := os.WriteFile(valuesPath, []byte("name: test"), 0444)
+		require.NoError(t, err)
+		defer os.Chmod(valuesPath, 0644) // Restore permissions for cleanup
+
+		chart, err := NewChart(tmpDir, nil)
+		require.NoError(t, err)
+
+		err = chart.FindTemplates()
+		require.NoError(t, err)
+
+		err = chart.ParseTemplates()
+		require.NoError(t, err)
+
+		chart.Changed = true // Force update attempt
+		err = chart.UpdateValues()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "permission denied")
+	})
+}
+
+func TestNestedValueConversion(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "helm-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	templatesDir := filepath.Join(tmpDir, "templates")
+	require.NoError(t, os.MkdirAll(templatesDir, 0755))
+
+	// Create a template with nested values
+	templateContent := `
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.nested.name }}
+  port: {{ .Values.nested.port | default 80 }}`
+
+	err = os.WriteFile(filepath.Join(templatesDir, "service.yaml"), []byte(templateContent), 0644)
+	require.NoError(t, err)
+
+	// Create initial values with mixed types
+	initialValues := `
+nested:
+  name: test
+  number: 42
+  float: 3.14
+  existing: value`
+
+	err = os.WriteFile(filepath.Join(tmpDir, "values.yaml"), []byte(initialValues), 0644)
+	require.NoError(t, err)
+
+	chart, err := NewChart(tmpDir, nil)
+	require.NoError(t, err)
+
+	err = chart.LoadValues()
+	require.NoError(t, err)
+
+	err = chart.FindTemplates()
+	require.NoError(t, err)
+
+	err = chart.ParseTemplates()
+	require.NoError(t, err)
+
+	err = chart.UpdateValues()
+	require.NoError(t, err)
+
+	// Verify final values
+	data, err := os.ReadFile(chart.ValuesFile)
+	require.NoError(t, err)
+
+	var values map[string]any
+	err = yaml.Unmarshal(data, &values)
+	require.NoError(t, err)
+
+	nested := values["nested"].(map[string]any)
+	assert.Equal(t, "test", nested["name"])
+	assert.Equal(t, "42", nested["number"])
+	assert.Equal(t, "3.14", nested["float"])
+	assert.Equal(t, "value", nested["existing"])
+	assert.Equal(t, "80", nested["port"])
+}
