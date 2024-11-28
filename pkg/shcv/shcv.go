@@ -12,7 +12,7 @@ import (
 )
 
 // Version is the current version of the shcv package
-const Version = "1.0.3"
+const Version = "1.0.4"
 
 // ValueRef represents a Helm value reference found in templates.
 // It tracks where values are used in templates and their default values if specified.
@@ -176,6 +176,9 @@ func (c *Chart) FindTemplates() error {
 // It identifies both simple references and those with default values.
 // The references are stored in the Chart's References slice.
 func (c *Chart) ParseTemplates() error {
+	// Map to track the last default value for each path
+	lastDefaults := make(map[string]string)
+
 	for _, template := range c.Templates {
 		content, err := os.ReadFile(template)
 		if err != nil {
@@ -184,56 +187,53 @@ func (c *Chart) ParseTemplates() error {
 
 		lines := strings.Split(string(content), "\n")
 		for lineNum, line := range lines {
+			// Track all default values found in this line
+			defaultsInLine := make(map[string]string)
+
 			// Check for values with double-quoted defaults
 			matches := defaultRegex.FindAllStringSubmatch(line, -1)
 			for _, match := range matches {
-				c.References = append(c.References, ValueRef{
-					Path:         match[1],
-					DefaultValue: match[2],
-					SourceFile:   template,
-					LineNumber:   lineNum + 1,
-				})
+				defaultsInLine[match[1]] = match[2]
 			}
 
 			// Check for values with single-quoted defaults
 			matches = defaultSingleQuoteRegex.FindAllStringSubmatch(line, -1)
 			for _, match := range matches {
-				c.References = append(c.References, ValueRef{
-					Path:         match[1],
-					DefaultValue: match[2],
-					SourceFile:   template,
-					LineNumber:   lineNum + 1,
-				})
+				defaultsInLine[match[1]] = match[2]
 			}
 
 			// Check for values with numeric defaults
 			matches = defaultNumericRegex.FindAllStringSubmatch(line, -1)
 			for _, match := range matches {
-				// Convert numeric default to string
-				c.References = append(c.References, ValueRef{
-					Path:         match[1],
-					DefaultValue: match[2],
-					SourceFile:   template,
-					LineNumber:   lineNum + 1,
-				})
+				defaultsInLine[match[1]] = match[2]
 			}
 
-			// Check for values without defaults
+			// Update lastDefaults with any new defaults found in this line
+			for path, value := range defaultsInLine {
+				lastDefaults[path] = value
+			}
+
+			// Check for all value references (with or without defaults)
 			matches = valueRegex.FindAllStringSubmatch(line, -1)
 			for _, match := range matches {
-				// Skip if we already found this with a default value
+				path := match[1]
+				// Use the last known default value for this path, if any
+				defaultValue := lastDefaults[path]
+
+				// Skip if we already found this exact reference
 				found := false
 				for _, ref := range c.References {
-					if ref.Path == match[1] && ref.SourceFile == template && ref.LineNumber == lineNum+1 {
+					if ref.Path == path && ref.SourceFile == template && ref.LineNumber == lineNum+1 {
 						found = true
 						break
 					}
 				}
 				if !found {
 					c.References = append(c.References, ValueRef{
-						Path:       match[1],
-						SourceFile: template,
-						LineNumber: lineNum + 1,
+						Path:         path,
+						DefaultValue: defaultValue,
+						SourceFile:   template,
+						LineNumber:   lineNum + 1,
 					})
 				}
 			}

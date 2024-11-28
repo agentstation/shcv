@@ -166,6 +166,46 @@ spec:
 				},
 			},
 		},
+		{
+			name: "multiple defaults for same value",
+			template: `
+metadata:
+  domain: {{ .Values.domain | default "example.com" }}
+spec:
+  url: {{ .Values.domain | default "api.example.com" }}`,
+			want: []ValueRef{
+				{
+					Path:         "domain",
+					DefaultValue: "example.com",
+					LineNumber:   3,
+				},
+				{
+					Path:         "domain",
+					DefaultValue: "api.example.com",
+					LineNumber:   5,
+				},
+			},
+		},
+		{
+			name: "multiple defaults in same line",
+			template: `
+spec:
+  urls: 
+    - {{ .Values.domain | default "example.com" }}/api
+    - {{ .Values.domain | default "api.example.com" }}/auth`,
+			want: []ValueRef{
+				{
+					Path:         "domain",
+					DefaultValue: "example.com",
+					LineNumber:   4,
+				},
+				{
+					Path:         "domain",
+					DefaultValue: "api.example.com",
+					LineNumber:   5,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -201,6 +241,53 @@ spec:
 			assert.Equal(t, tt.want, refs)
 		})
 	}
+}
+
+func TestDefaultValues(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "helm-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	templatesDir := filepath.Join(tmpDir, "templates")
+	require.NoError(t, os.MkdirAll(templatesDir, 0755))
+
+	// Create a template with multiple default values
+	templateContent := `
+apiVersion: v1
+kind: Service
+metadata:
+  domain: {{ .Values.domain | default "example.com" }}
+spec:
+  url: {{ .Values.domain | default "api.example.com" }}`
+
+	err = os.WriteFile(filepath.Join(templatesDir, "service.yaml"), []byte(templateContent), 0644)
+	require.NoError(t, err)
+
+	chart, err := NewChart(tmpDir, nil)
+	require.NoError(t, err)
+
+	err = chart.FindTemplates()
+	require.NoError(t, err)
+
+	err = chart.ParseTemplates()
+	require.NoError(t, err)
+
+	err = chart.LoadValues()
+	require.NoError(t, err)
+
+	err = chart.UpdateValues()
+	require.NoError(t, err)
+
+	// Read the generated values.yaml
+	data, err := os.ReadFile(filepath.Join(tmpDir, "values.yaml"))
+	require.NoError(t, err)
+
+	var values map[string]interface{}
+	err = yaml.Unmarshal(data, &values)
+	require.NoError(t, err)
+
+	// Verify that the last default value was used
+	assert.Equal(t, "api.example.com", values["domain"])
 }
 
 func TestValuesHandling(t *testing.T) {
