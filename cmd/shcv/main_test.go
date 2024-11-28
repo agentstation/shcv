@@ -12,13 +12,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// errorWriter is a writer that always returns an error
-type errorWriter struct{}
-
-func (w *errorWriter) Write(p []byte) (n int, err error) {
-	return 0, fmt.Errorf("write error")
-}
-
 func executeCommand(args ...string) (string, error) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -253,7 +246,10 @@ func TestCLIProcessChartEdgeCases(t *testing.T) {
 		// Make templates directory unreadable
 		err := os.Chmod(templatesDir, 0000)
 		assert.NoError(t, err)
-		defer os.Chmod(templatesDir, 0755)
+		defer func() {
+			err := os.Chmod(templatesDir, 0755)
+			assert.NoError(t, err)
+		}()
 
 		output, err := executeCommand(tmpDir)
 		assert.Error(t, err)

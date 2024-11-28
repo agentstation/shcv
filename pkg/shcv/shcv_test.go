@@ -399,7 +399,10 @@ metadata:
 		valuesDir := filepath.Join(unwritableDir)
 		require.NoError(t, os.MkdirAll(valuesDir, 0755))
 		require.NoError(t, os.Chmod(valuesDir, 0555))
-		defer os.Chmod(valuesDir, 0755) // Restore permissions for cleanup
+		defer func() {
+			err := os.Chmod(valuesDir, 0755)
+			assert.NoError(t, err)
+		}()
 
 		chart, err := NewChart(unwritableDir, nil)
 		require.NoError(t, err)
@@ -421,7 +424,10 @@ metadata:
 		valuesPath := filepath.Join(tmpDir, "values.yaml")
 		err := os.WriteFile(valuesPath, []byte("name: test"), 0444)
 		require.NoError(t, err)
-		defer os.Chmod(valuesPath, 0644) // Restore permissions for cleanup
+		defer func() {
+			err := os.Chmod(valuesPath, 0644)
+			assert.NoError(t, err)
+		}()
 
 		chart, err := NewChart(tmpDir, nil)
 		require.NoError(t, err)
