@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,7 +84,7 @@ func TestRootCmd(t *testing.T) {
 				assert.NoError(t, err)
 				if chartDir != "" {
 					// Verify values.yaml was updated with the new value
-					content, err := ioutil.ReadFile(filepath.Join(chartDir, "values.yaml"))
+					content, err := os.ReadFile(filepath.Join(chartDir, "values.yaml"))
 					require.NoError(t, err)
 					assert.Contains(t, string(content), "newValue:")
 				}
