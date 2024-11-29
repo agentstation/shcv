@@ -6,7 +6,6 @@ The package helps maintain Helm charts by automatically detecting all {{ .Values
 expressions in template files and ensuring they are properly defined in the values files.
 It uses atomic file operations to ensure data integrity and provides robust error handling.
 
-Version: 1.0.5
 Requires: Go 1.21 or later
 
 Basic usage:

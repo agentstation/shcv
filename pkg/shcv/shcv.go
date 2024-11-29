@@ -11,9 +11,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Version is the current version of the shcv package
-const Version = "1.0.5"
-
 // ValueRef represents a Helm value reference found in templates.
 // It tracks where values are used in templates and their default values if specified.
 type ValueRef struct {

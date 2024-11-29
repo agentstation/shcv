@@ -10,7 +10,7 @@ Package shcv provides functionality to synchronize Helm chart values by analyzin
 
 The package helps maintain Helm charts by automatically detecting all \{\{ .Values.\* \}\} expressions in template files and ensuring they are properly defined in the values files. It uses atomic file operations to ensure data integrity and provides robust error handling.
 
-Version: 1.0.5 Requires: Go 1.21 or later
+Requires: Go 1.21 or later
 
 Basic usage:
 
@@ -95,14 +95,14 @@ Error Handling:
 
 ## Constants
 
-<a name="Version"></a>Version is the current version of the shcv package
+<a name="Version"></a>Version is the current version of shcv
 
 ```go
 const Version = "1.0.5"
 ```
 
 <a name="Chart"></a>
-## type [Chart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L48-L59>)
+## type [Chart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L45-L56>)
 
 Chart represents a Helm chart structure and manages its values and templates. It provides functionality to scan templates for value references and ensure all referenced values are properly defined in values.yaml.
 
@@ -121,7 +121,7 @@ type Chart struct {
 ```
 
 <a name="NewChart"></a>
-### func [NewChart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L62>)
+### func [NewChart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L59>)
 
 ```go
 func NewChart(dir string, opts ...Option) (*Chart, error)
@@ -130,7 +130,7 @@ func NewChart(dir string, opts ...Option) (*Chart, error)
 NewChart creates a new Chart instance for the given directory.
 
 <a name="Chart.FindTemplates"></a>
-### func \(\*Chart\) [FindTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L134>)
+### func \(\*Chart\) [FindTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L131>)
 
 ```go
 func (c *Chart) FindTemplates() error
@@ -139,7 +139,7 @@ func (c *Chart) FindTemplates() error
 FindTemplates discovers all template files in the chart's templates directory. It looks for files with .yaml, .yml, or .tpl extensions. Returns an error if the templates directory cannot be accessed.
 
 <a name="Chart.LoadValueFiles"></a>
-### func \(\*Chart\) [LoadValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L99>)
+### func \(\*Chart\) [LoadValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L96>)
 
 ```go
 func (c *Chart) LoadValueFiles() error
@@ -148,7 +148,7 @@ func (c *Chart) LoadValueFiles() error
 LoadValueFiles loads the current values from the value files provided. If the file doesn't exist, an empty values map is initialized. Returns an error if the file exists but cannot be read or parsed.
 
 <a name="Chart.ParseTemplates"></a>
-### func \(\*Chart\) [ParseTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L160>)
+### func \(\*Chart\) [ParseTemplates](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L157>)
 
 ```go
 func (c *Chart) ParseTemplates() error
@@ -157,7 +157,7 @@ func (c *Chart) ParseTemplates() error
 ParseTemplates scans all discovered templates for .Values references. It identifies both simple references and those with default values. The references are stored in the Chart's References slice.
 
 <a name="Chart.ProcessReferences"></a>
-### func \(\*Chart\) [ProcessReferences](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L199>)
+### func \(\*Chart\) [ProcessReferences](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L196>)
 
 ```go
 func (c *Chart) ProcessReferences()
@@ -166,7 +166,7 @@ func (c *Chart) ProcessReferences()
 ProcessReferences ensures all referenced values exist in values.yaml.
 
 <a name="Chart.UpdateValueFiles"></a>
-### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L240>)
+### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L237>)
 
 ```go
 func (c *Chart) UpdateValueFiles() error
@@ -211,7 +211,7 @@ func WithVerbose(verbose bool) Option
 WithVerbose sets the verbose flag.
 
 <a name="ValueFile"></a>
-## type [ValueFile](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L36-L43>)
+## type [ValueFile](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L33-L40>)
 
 ValueFile represents a values file
 
@@ -227,7 +227,7 @@ type ValueFile struct {
 ```
 
 <a name="ValueRef"></a>
-## type [ValueRef](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L19-L28>)
+## type [ValueRef](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L16-L25>)
 
 ValueRef represents a Helm value reference found in templates. It tracks where values are used in templates and their default values if specified.
 
@@ -254,7 +254,7 @@ func ParseFile(content, templatePath string) []ValueRef
 ParseFile parses a template file and returns all value references
 
 <a name="ValueRef.ID"></a>
-### func \(\*ValueRef\) [ID](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L31>)
+### func \(\*ValueRef\) [ID](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L28>)
 
 ```go
 func (v *ValueRef) ID() string
