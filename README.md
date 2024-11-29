@@ -8,7 +8,7 @@
 [![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](https://github.com/agentstation/shcv/releases)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D%201.21-blue)](go.mod)
 
-`shcv` is a command-line tool and Go package that helps maintain Helm chart values by automatically synchronizing `values.yaml` with the parameters used in your Helm templates. It scans all template files for `{{ .Values.* }}` expressions and ensures they are properly defined in your values file.
+`shcv` is a command-line tool and Go package that helps maintain Helm chart values by automatically synchronizing values files with the parameters used in your Helm templates. It scans all template files for `{{ .Values.* }}` expressions and ensures they are properly defined in your values files.
 
 ## Requirements
 
@@ -65,14 +65,14 @@ The core functionality is available as a Go package that you can use in your own
 ```go
 import "github.com/agentstation/shcv/pkg/shcv"
 
-// Use default options
-chart, err := shcv.NewChart("./my-chart", nil)
+// Create a new chart instance with default options
+chart, err := shcv.NewChart("./my-chart")
 if err != nil {
     log.Fatal(err)
 }
 
 // Load and process the chart
-if err := chart.LoadValues(); err != nil {
+if err := chart.LoadValueFiles(); err != nil {
     log.Fatal(err)
 }
 if err := chart.FindTemplates(); err != nil {
@@ -81,21 +81,19 @@ if err := chart.FindTemplates(); err != nil {
 if err := chart.ParseTemplates(); err != nil {
     log.Fatal(err)
 }
-if err := chart.UpdateValues(); err != nil {
+if err := chart.ProcessReferences(); err != nil {
+    log.Fatal(err)
+}
+if err := chart.UpdateValueFiles(); err != nil {
     log.Fatal(err)
 }
 
-// Or customize the behavior
-opts := &shcv.Options{
-    ValuesFileName: "custom-values.yaml",
-    TemplatesDir:   "custom-templates",
-    DefaultValues: map[string]string{
-        "domain":   "custom.example.com",
-        "port":     "8080",
-        "replicas": "3",
-    },
-}
-chart, err := shcv.NewChart("./my-chart", opts)
+// Or customize the behavior with functional options
+chart, err := shcv.NewChart("./my-chart",
+    shcv.WithValuesFileNames([]string{"values.yaml", "values-prod.yaml"}),
+    shcv.WithTemplatesDir("custom-templates"),
+    shcv.WithVerbose(true),
+)
 ```
 
 ## Example
@@ -140,14 +138,15 @@ service:
 ## Features
 
 - Automatically detects all Helm value references in template files
+- Supports multiple values files
 - Supports nested value structures (e.g., `{{ .Values.gateway.domain }}`)
 - Handles default values in templates (e.g., `{{ .Values.domain | default "api.example.com" }}`)
 - Supports double-quoted, single-quoted, and numeric default values
-- Creates missing values in `values.yaml` with their default values
-- Preserves existing values and structure in your values file
+- Creates missing values in values files with their default values
+- Preserves existing values and structure in your values files
 - Provides line number and source file tracking for each reference
-- Configurable through options when used as a package
-- Atomic file operations ensure values.yaml is never corrupted
+- Configurable through functional options when used as a package
+- Atomic file operations ensure values files are never corrupted
 - Robust error handling with detailed error messages
 - Safe handling of concurrent chart updates
 
@@ -156,7 +155,7 @@ service:
 The tool provides detailed error messages for common issues:
 - Invalid chart directory structure
 - Missing or inaccessible templates directory
-- Permission issues with values.yaml
+- Permission issues with values files
 - Invalid YAML syntax in templates or values
 - Concurrent file access conflicts
 
