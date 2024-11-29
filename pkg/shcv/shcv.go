@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
 
 // ValueRef represents a Helm value reference found in templates.
@@ -222,32 +222,35 @@ func (c *Chart) ProcessReferences() {
 	for i := range c.ValuesFiles {
 		file := &c.ValuesFiles[i] // Get pointer to existing ValueFile
 
-		// iterate over each reference
+		// iterate over each template reference
 		for _, ref := range templateRefs {
-			// Always set the value, whether it exists or not
-			setNestedValue(file.Values, ref.Path, ref.DefaultValue)
-			file.Changed = true
+			// Only set the value if it doesn't already exist or has a default value
+			if !valueExists(file.Values, ref.Path) {
+				setNestedValue(file.Values, ref.Path, ref.DefaultValue)
+				file.Changed = true
+			}
 		}
 	}
 }
 
 // UpdateValueFiles ensures all referenced values exist in values.yaml.
-// It adds missing values with appropriate defaults and updates the file atomically.
+// It adds missing values with appropriate defaults and updates the file.
 // The operation is skipped if no changes are needed.
 func (c *Chart) UpdateValueFiles() error {
 	// iterate over each values file
 	for i := range c.ValuesFiles {
-		file := &c.ValuesFiles[i] // Get pointer to existing ValueFile
+		file := &c.ValuesFiles[i]
 		if !file.Changed {
 			continue
 		}
 
-		// Write updated values to files
+		// Convert to YAML with proper formatting
 		data, err := yaml.Marshal(file.Values)
 		if err != nil {
-			return fmt.Errorf("marshaling values: %w", err)
+			return fmt.Errorf("encoding values: %w", err)
 		}
 
+		// Write the formatted YAML to file
 		if err := os.WriteFile(file.Path, data, 0644); err != nil {
 			return fmt.Errorf("writing values file: %w", err)
 		}
@@ -285,7 +288,7 @@ func setNestedValue(values map[string]any, path string, value string) {
 	current[parts[len(parts)-1]] = value
 }
 
-// Helper function to check if a value exists at the given path
+// valueExists is a function to check if a value exists in the values map at the given path
 func valueExists(values map[string]any, path string) bool {
 	current := values
 	parts := strings.Split(path, ".")
