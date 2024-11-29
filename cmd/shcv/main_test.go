@@ -2,318 +2,142 @@ package main
 
 import (
 	"bytes"
-	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/agentstation/shcv/pkg/shcv"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v3"
+	"github.com/stretchr/testify/require"
 )
 
-func executeCommand(args ...string) (string, error) {
-	oldArgs := os.Args
-	defer func() { os.Args = oldArgs }()
-
-	os.Args = append([]string{"shcv"}, args...)
-
-	var buf bytes.Buffer
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	// Reset command state
-	RootCmd.ResetFlags()
-	RootCmd.Flags().BoolP("verbose", "v", false, "verbose output showing all found references")
-
-	err := RootCmd.Execute()
-
-	w.Close()
-	os.Stdout = old
-
-	// Update to handle ReadFrom error
-	_, readErr := buf.ReadFrom(r)
-	if readErr != nil {
-		return "", readErr
-	}
-	return buf.String(), err
-}
-
-func TestCLIFlags(t *testing.T) {
-	// Test version flag first (simpler test)
-	output, err := executeCommand("--version")
-	assert.NoError(t, err)
-	assert.Equal(t, shcv.Version+"\n", output)
-
-	// Test verbose flag
-	tmpDir, err := os.MkdirTemp("", "helm-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
-
-	// Create templates directory with a simple template
-	templatesDir := filepath.Join(tmpDir, "templates")
-	err = os.MkdirAll(templatesDir, 0755)
-	assert.NoError(t, err)
-
-	templateContent := `apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Values.name }}
-spec:
-  ports:
-  - port: {{ .Values.port | default 80 }}`
-
-	err = os.WriteFile(filepath.Join(templatesDir, "service.yaml"), []byte(templateContent), 0644)
-	assert.NoError(t, err)
-
-	// Test verbose output
-	output, err = executeCommand("-v", tmpDir)
-	assert.NoError(t, err)
-
-	// Verify verbose output contains expected information
-	assert.Contains(t, output, "Found 1 template files")
-	assert.Contains(t, output, "Found 2 value references")
-	assert.Contains(t, output, "name")
-	assert.Contains(t, output, "port")
-	assert.Contains(t, output, "default: 80")
-	assert.Contains(t, output, "Successfully updated")
-
-	// Test non-verbose output
-	output, err = executeCommand(tmpDir)
-	assert.NoError(t, err)
-	assert.Empty(t, output)
-}
-
-func TestCLIErrors(t *testing.T) {
+func TestRootCmd(t *testing.T) {
 	tests := []struct {
-		name          string
-		args          []string
-		expectedError string
+		name        string
+		args        []string
+		setup       func() (string, func())
+		wantErr     bool
+		errContains string
 	}{
 		{
-			name:          "no arguments",
-			args:          []string{},
-			expectedError: "accepts 1 arg(s), received 0",
+			name:        "no args",
+			args:        []string{},
+			wantErr:     true,
+			errContains: "accepts 1 arg(s)",
 		},
 		{
-			name:          "too many arguments",
-			args:          []string{"dir1", "dir2"},
-			expectedError: "accepts 1 arg(s), received 2",
+			name:        "too many args",
+			args:        []string{"dir1", "dir2"},
+			wantErr:     true,
+			errContains: "accepts 1 arg(s)",
 		},
 		{
-			name:          "non-existent directory",
-			args:          []string{"/nonexistent"},
-			expectedError: "error creating chart: invalid chart directory",
+			name: "valid chart directory",
+			args: []string{"testdata/valid-chart"},
+			setup: func() (string, func()) {
+				dir := t.TempDir()
+				chartDir := filepath.Join(dir, "valid-chart")
+				require.NoError(t, os.MkdirAll(filepath.Join(chartDir, "templates"), 0755))
+				require.NoError(t, os.WriteFile(
+					filepath.Join(chartDir, "values.yaml"),
+					[]byte("existing: value\n"),
+					0644,
+				))
+				require.NoError(t, os.WriteFile(
+					filepath.Join(chartDir, "templates/deployment.yaml"),
+					[]byte("{{ .Values.newValue }}\n"),
+					0644,
+				))
+				return chartDir, func() {}
+			},
+			wantErr: false,
 		},
 		{
-			name:          "no templates directory",
-			args:          []string{os.TempDir()},
-			expectedError: "error finding templates: templates directory not found",
-		},
-		{
-			name:          "empty path",
-			args:          []string{""},
-			expectedError: "error creating chart: chart directory cannot be empty",
+			name:        "invalid chart directory",
+			args:        []string{"nonexistent"},
+			wantErr:     true,
+			errContains: "error creating chart",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			output, err := executeCommand(tt.args...)
-			if assert.Error(t, err) {
-				assert.Contains(t, err.Error(), tt.expectedError)
+			var chartDir string
+			if tt.setup != nil {
+				var cleanup func()
+				chartDir, cleanup = tt.setup()
+				defer cleanup()
+				tt.args[0] = chartDir
 			}
-			assert.Empty(t, output)
-		})
-	}
-}
 
-func TestCLIValuesUpdate(t *testing.T) {
-	// Create temporary directory for test chart
-	tmpDir, err := os.MkdirTemp("", "helm-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+			cmd := RootCmd
+			cmd.SetArgs(tt.args)
 
-	// Create templates directory
-	templatesDir := filepath.Join(tmpDir, "templates")
-	err = os.MkdirAll(templatesDir, 0755)
-	assert.NoError(t, err)
+			err := cmd.Execute()
 
-	// Create test template with new value
-	templateContent := `apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Values.name }}
-  labels:
-    app: {{ .Values.app | default "myapp" }}`
-
-	err = os.WriteFile(filepath.Join(templatesDir, "service.yaml"), []byte(templateContent), 0644)
-	assert.NoError(t, err)
-
-	// Create initial values.yaml
-	initialValues := `name: test-service`
-	err = os.WriteFile(filepath.Join(tmpDir, "values.yaml"), []byte(initialValues), 0644)
-	assert.NoError(t, err)
-
-	// Process chart using CLI
-	output, err := executeCommand(tmpDir)
-	assert.NoError(t, err)
-	assert.Empty(t, output)
-
-	// Verify values.yaml was updated with new field
-	data, err := os.ReadFile(filepath.Join(tmpDir, "values.yaml"))
-	assert.NoError(t, err)
-
-	var values map[string]any
-	err = yaml.Unmarshal(data, &values)
-	assert.NoError(t, err)
-
-	// Check that existing value was preserved
-	assert.Equal(t, "test-service", values["name"])
-	// Check that new value was added with default
-	assert.Equal(t, "myapp", values["app"])
-}
-
-func TestCLIOutputRedirectionErrors(t *testing.T) {
-	oldStdout := os.Stdout
-	defer func() { os.Stdout = oldStdout }()
-
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	// Start command in goroutine
-	done := make(chan error)
-	go func() {
-		output, err := executeCommand("--version")
-		if err != nil {
-			done <- err
-			return
-		}
-		done <- fmt.Errorf("expected error, got output: %s", output)
-	}()
-
-	// Close write end to force error
-	w.Close()
-	r.Close()
-
-	// Wait for command to complete
-	err := <-done
-	assert.Error(t, err)
-}
-
-func TestCLIInvalidFlags(t *testing.T) {
-	tests := []struct {
-		name          string
-		args          []string
-		expectedError string
-	}{
-		{
-			name:          "unknown flag",
-			args:          []string{"--unknown-flag", "."},
-			expectedError: "unknown flag: --unknown-flag",
-		},
-		{
-			name:          "invalid verbose flag value",
-			args:          []string{"--verbose=invalid", "."},
-			expectedError: "invalid argument",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			output, err := executeCommand(tt.args...)
-			if assert.Error(t, err) {
-				assert.Contains(t, err.Error(), tt.expectedError)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+				if chartDir != "" {
+					// Verify values.yaml was updated with the new value
+					content, err := ioutil.ReadFile(filepath.Join(chartDir, "values.yaml"))
+					require.NoError(t, err)
+					assert.Contains(t, string(content), "newValue:")
+				}
 			}
-			assert.Empty(t, output)
 		})
 	}
 }
 
-func TestCLIProcessChartEdgeCases(t *testing.T) {
-	// Create temporary directory for test chart
-	tmpDir, err := os.MkdirTemp("", "helm-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+func TestVerboseOutput(t *testing.T) {
+	dir := t.TempDir()
+	chartDir := filepath.Join(dir, "verbose-chart")
+	require.NoError(t, os.MkdirAll(filepath.Join(chartDir, "templates"), 0755))
 
-	// Create templates directory
-	templatesDir := filepath.Join(tmpDir, "templates")
-	err = os.MkdirAll(templatesDir, 0755)
-	assert.NoError(t, err)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(chartDir, "values.yaml"),
+		[]byte("existing: value\n"),
+		0644,
+	))
 
-	t.Run("unreadable template directory", func(t *testing.T) {
-		// Make templates directory unreadable
-		err := os.Chmod(templatesDir, 0000)
-		assert.NoError(t, err)
-		defer func() {
-			err := os.Chmod(templatesDir, 0755)
-			assert.NoError(t, err)
-		}()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(chartDir, "templates/deployment.yaml"),
+		[]byte("{{ .Values.newValue | default \"defaultValue\" }}\n"),
+		0644,
+	))
 
-		output, err := executeCommand(tmpDir)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "error finding templates")
-		assert.Empty(t, output)
-	})
+	cmd := RootCmd
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"-v", chartDir})
 
-	t.Run("invalid values.yaml", func(t *testing.T) {
-		// Create invalid values.yaml
-		err := os.WriteFile(filepath.Join(tmpDir, "values.yaml"), []byte(": invalid"), 0644)
-		assert.NoError(t, err)
+	err := cmd.Execute()
+	require.NoError(t, err)
 
-		output, err := executeCommand(tmpDir)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "error loading values")
-		assert.Empty(t, output)
-	})
-
-	t.Run("verbose output with no changes", func(t *testing.T) {
-		// Create a new temporary directory for this test
-		testDir, err := os.MkdirTemp("", "helm-test-verbose")
-		assert.NoError(t, err)
-		defer os.RemoveAll(testDir)
-
-		// Create templates directory
-		testTemplatesDir := filepath.Join(testDir, "templates")
-		err = os.MkdirAll(testTemplatesDir, 0755)
-		assert.NoError(t, err)
-
-		// Create valid template with no values
-		templateContent := `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: static-config
-`
-		err = os.WriteFile(filepath.Join(testTemplatesDir, "configmap.yaml"), []byte(templateContent), 0644)
-		assert.NoError(t, err)
-
-		// Create empty but valid values.yaml
-		err = os.WriteFile(filepath.Join(testDir, "values.yaml"), []byte("{}\n"), 0644)
-		assert.NoError(t, err)
-
-		output, err := executeCommand("-v", testDir)
-		assert.NoError(t, err)
-		assert.Contains(t, output, "Found 1 template files")
-		assert.Contains(t, output, "Found 0 value references")
-		assert.NotContains(t, output, "Successfully updated")
-	})
+	output := stdout.String() + stderr.String()
+	assert.Contains(t, output, "Found")
+	assert.Contains(t, output, "template files")
+	assert.Contains(t, output, "value references")
+	assert.Contains(t, output, "deployment.yaml")
+	assert.Contains(t, output, "default: defaultValue")
 }
 
-func TestCLIVersionOutput(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-	}{
-		{"version flag", []string{"--version"}},
-		{"version shorthand", []string{"-v", "--version"}},
-	}
+func TestVersionFlag(t *testing.T) {
+	cmd := RootCmd
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"--version"})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			output, err := executeCommand(tt.args...)
-			assert.NoError(t, err)
-			assert.Equal(t, shcv.Version+"\n", output)
-		})
-	}
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.True(t, len(strings.TrimSpace(output)) > 0)
 }

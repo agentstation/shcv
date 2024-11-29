@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -24,7 +25,7 @@ Example:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
-		return processChart(args[0], verbose)
+		return processChart(args[0], verbose, cmd.OutOrStdout())
 	},
 	Version: shcv.Version,
 }
@@ -45,13 +46,13 @@ func init() {
   shcv --version`
 }
 
-func processChart(chartDir string, verbose bool) error {
-	chart, err := shcv.NewChart(chartDir, nil) // Use default options
+func processChart(chartDir string, verbose bool, out io.Writer) error {
+	chart, err := shcv.NewChart(chartDir, shcv.WithVerbose(verbose))
 	if err != nil {
 		return fmt.Errorf("error creating chart: %w", err)
 	}
 
-	if err := chart.LoadValues(); err != nil {
+	if err := chart.LoadValueFiles(); err != nil {
 		return fmt.Errorf("error loading values: %w", err)
 	}
 
@@ -64,23 +65,20 @@ func processChart(chartDir string, verbose bool) error {
 	}
 
 	if verbose {
-		fmt.Printf("Found %d template files\n", len(chart.Templates))
-		fmt.Printf("Found %d value references\n", len(chart.References))
+		fmt.Fprintf(out, "Found %d template files\n", len(chart.Templates))
+		fmt.Fprintf(out, "Found %d value references\n", len(chart.References))
 		for _, ref := range chart.References {
-			fmt.Printf("- %s (from %s:%d)\n", ref.Path, filepath.Base(ref.SourceFile), ref.LineNumber)
+			fmt.Fprintf(out, "- %s (from %s:%d)\n", ref.Path, filepath.Base(ref.SourceFile), ref.LineNumber)
 			if ref.DefaultValue != "" {
-				fmt.Printf("  default: %s\n", ref.DefaultValue)
+				fmt.Fprintf(out, "  default: %s\n", ref.DefaultValue)
 			}
 		}
-		fmt.Println()
+		fmt.Fprintln(out)
 	}
 
-	if err := chart.UpdateValues(); err != nil {
+	chart.ProcessReferences()
+	if err := chart.UpdateValueFiles(); err != nil {
 		return fmt.Errorf("error updating values: %w", err)
-	}
-
-	if verbose && chart.Changed {
-		fmt.Printf("Successfully updated %s\n", chart.ValuesFile)
 	}
 
 	return nil

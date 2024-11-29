@@ -1,11 +1,11 @@
 package shcv
 
 import (
+	"bufio"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -27,132 +27,101 @@ type ValueRef struct {
 	LineNumber int
 }
 
+// ID returns a unique identifier for the value reference
+func (v *ValueRef) ID() string {
+	return fmt.Sprintf("%s:%d:%s", v.Path, v.LineNumber, v.SourceFile)
+}
+
+// ValueFile represents a values file
+type ValueFile struct {
+	// Path is the path to the values file
+	Path string
+	// Values contains the values from the values file
+	Values map[string]any
+	// Changed indicates whether values were modified during processing
+	Changed bool
+}
+
 // Chart represents a Helm chart structure and manages its values and templates.
 // It provides functionality to scan templates for value references and ensure
 // all referenced values are properly defined in values.yaml.
 type Chart struct {
 	// Dir is the root directory of the chart
 	Dir string
-	// ValuesFile is the path to values.yaml
-	ValuesFile string
-	// Values contains the current values from values.yaml
-	Values map[string]any
+	// ValuesFiles is the path to values.yaml
+	ValuesFiles []ValueFile
 	// References tracks all .Values references found in templates
 	References []ValueRef
 	// Templates lists all discovered template files
 	Templates []string
-	// Changed indicates whether values were modified during processing
-	Changed bool
-	// options contains the chart processing configuration
-	options *Options
+	// config contains the chart processing configuration
+	config *config
 }
 
-// Regular expressions for parsing Helm templates
-var (
-	// Matches {{ .Values.something }} or {{ .Values.something.nested }}
-	valueRegex = regexp.MustCompile(`{{\s*\.Values\.([^}\s|]+)`)
-
-	// Matches default values: {{ .Values.something | default "value" }}
-	defaultRegex = regexp.MustCompile(`{{\s*\.Values\.([^}\s|]+)\s*\|\s*default\s*"([^"]+)"`)
-
-	// Matches default values with single quotes: {{ .Values.something | default 'value' }}
-	defaultSingleQuoteRegex = regexp.MustCompile(`{{\s*\.Values\.([^}\s|]+)\s*\|\s*default\s*'([^']+)'`)
-
-	// Matches numeric default values: {{ .Values.something | default 80 }}
-	defaultNumericRegex = regexp.MustCompile(`{{\s*\.Values\.([^}\s|]+)\s*\|\s*default\s+(\d+)`)
-)
-
-// Options configures the behavior of Chart processing.
-// It allows customization of file locations and default values.
-type Options struct {
-	// ValuesFileName is the name of the values file to use (default: "values.yaml")
-	ValuesFileName string
-	// TemplatesDir is the name of the templates directory (default: "templates")
-	TemplatesDir string
-	// DefaultValues provides default values for specific key patterns
-	DefaultValues map[string]string
-}
-
-// DefaultOptions returns the default configuration options for Chart processing.
-// This includes standard file locations and common default values.
-func DefaultOptions() *Options {
-	return &Options{
-		ValuesFileName: "values.yaml",
-		TemplatesDir:   "templates",
-		DefaultValues: map[string]string{
-			"domain":   "api.example.com",
-			"port":     "80",
-			"replicas": "1",
-			"enabled":  "true",
-		},
-	}
-}
-
-// NewChart creates a new Chart instance for processing a Helm chart.
-// It validates the chart directory and initializes the chart with the given options.
-// If opts is nil, default options are used.
-func NewChart(dir string, opts *Options) (*Chart, error) {
-	// Validate directory
+// NewChart creates a new Chart instance for the given directory.
+func NewChart(dir string, opts ...Option) (*Chart, error) {
 	if dir == "" {
-		return nil, fmt.Errorf("chart directory cannot be empty")
+		return nil, fmt.Errorf("invalid chart directory: directory path is empty")
 	}
-	info, err := os.Stat(dir)
-	if err != nil {
+
+	// Check if directory exists
+	if _, err := os.Stat(dir); err != nil {
 		return nil, fmt.Errorf("invalid chart directory: %w", err)
 	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("path %s is not a directory", dir)
+
+	// Create a new config, apply options, and update values files
+	config := defaultConfig()
+	config = applyOptions(config, opts)
+
+	// create a new chart and return it
+	chart := &Chart{
+		Dir:         dir,
+		ValuesFiles: make([]ValueFile, 0),
+		References:  make([]ValueRef, 0),
+		Templates:   make([]string, 0),
+		config:      config,
 	}
 
-	// use default options if none are provided
-	if opts == nil {
-		opts = DefaultOptions()
-	} else {
-		// Merge with default options
-		defaultOpts := DefaultOptions()
-		if opts.ValuesFileName == "" {
-			opts.ValuesFileName = defaultOpts.ValuesFileName
-		}
-		if opts.TemplatesDir == "" {
-			opts.TemplatesDir = defaultOpts.TemplatesDir
-		}
-		if opts.DefaultValues == nil {
-			opts.DefaultValues = defaultOpts.DefaultValues
-		} else {
-			// Merge custom defaults with default values
-			for k, v := range defaultOpts.DefaultValues {
-				if _, ok := opts.DefaultValues[k]; !ok {
-					opts.DefaultValues[k] = v
-				}
-			}
-		}
+	// Initialize ValuesFiles with the configured file names
+	for _, name := range config.ValuesFileName {
+		chart.ValuesFiles = append(chart.ValuesFiles, ValueFile{
+			Path:   filepath.Join(dir, name),
+			Values: make(map[string]any),
+		})
 	}
 
-	// Create values file path
-	valuesFile := filepath.Join(dir, opts.ValuesFileName)
-
-	return &Chart{
-		Dir:        dir,
-		ValuesFile: valuesFile,
-		Values:     make(map[string]any),
-		References: make([]ValueRef, 0),
-		Templates:  make([]string, 0),
-		options:    opts,
-	}, nil
+	return chart, nil
 }
 
-// LoadValues loads the current values from the values.yaml file.
+// LoadValueFiles loads the current values from the value files provided.
 // If the file doesn't exist, an empty values map is initialized.
 // Returns an error if the file exists but cannot be read or parsed.
-func (c *Chart) LoadValues() error {
-	data, err := os.ReadFile(c.ValuesFile)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reading values file: %w", err)
-	}
+func (c *Chart) LoadValueFiles() error {
+	// iterate over all values files
+	for i := range c.ValuesFiles {
+		file := &c.ValuesFiles[i] // Get pointer to existing ValueFile
+		data, err := os.ReadFile(file.Path)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("reading values file: %w", err)
+		}
 
-	if len(data) > 0 {
-		if err := yaml.Unmarshal(data, &c.Values); err != nil {
-			return fmt.Errorf("parsing values file: %w", err)
+		// Initialize the values map if nil
+		if file.Values == nil {
+			file.Values = make(map[string]any)
+		}
+
+		// if the file has data lets unmarshal it into the values map
+		if len(data) > 0 {
+			if err := yaml.Unmarshal(data, &file.Values); err != nil {
+				return fmt.Errorf("parsing values file: %w", err)
+			}
+			if c.config.Verbose {
+				fmt.Printf("loaded values from %s\n", file.Path)
+			}
+		} else {
+			if c.config.Verbose {
+				fmt.Printf("no values found in %s\n", file.Path)
+			}
 		}
 	}
 
@@ -163,11 +132,16 @@ func (c *Chart) LoadValues() error {
 // It looks for files with .yaml, .yml, or .tpl extensions.
 // Returns an error if the templates directory cannot be accessed.
 func (c *Chart) FindTemplates() error {
-	templatesDir := filepath.Join(c.Dir, c.options.TemplatesDir)
-	if _, err := os.Stat(templatesDir); os.IsNotExist(err) {
+	// get the full path to the templates directory
+	dir := filepath.Join(c.Dir, c.config.TemplatesDir)
+
+	// check if the directory exists
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("templates directory not found: %w", err)
 	}
-	return filepath.WalkDir(templatesDir, func(path string, d fs.DirEntry, err error) error {
+
+	// walk the templates directory and find all template files
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -184,62 +158,108 @@ func (c *Chart) FindTemplates() error {
 // It identifies both simple references and those with default values.
 // The references are stored in the Chart's References slice.
 func (c *Chart) ParseTemplates() error {
-	// Map to track the last default value for each path
-	lastDefaults := make(map[string]string)
-	seenRefs := make(map[string]bool)
-
+	// iterate over all templates
 	for _, template := range c.Templates {
-		content, err := os.ReadFile(template)
+
+		// Open the template file and defer closing it
+		file, err := os.Open(template)
 		if err != nil {
-			return fmt.Errorf("reading template %s: %w", template, err)
+			return fmt.Errorf("opening template %s: %w", template, err)
+		}
+		defer file.Close()
+
+		// Create a scanner for efficient reading
+		scanner := bufio.NewScanner(file)
+		var content strings.Builder
+		for scanner.Scan() { // read each line of the template
+			content.WriteString(scanner.Text()) // append the line to the content
+			content.WriteString("\n")           // append a newline to the end of the line
 		}
 
-		lines := strings.Split(string(content), "\n")
-		for lineNum, line := range lines {
-			// Track all default values found in this line
-			defaultsInLine := make(map[string]string)
+		// Check for any errors from the scanner
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("scanning template %s: %w", template, err)
+		}
 
-			// Check for values with double-quoted defaults
-			matches := defaultRegex.FindAllStringSubmatch(line, -1)
-			for _, match := range matches {
-				defaultsInLine[match[1]] = match[2]
+		// Parse the template content
+		if c.config.Verbose {
+			fmt.Printf("parsing template %s\n", template)
+		}
+
+		// Parse the template content
+		refs := ParseFile(content.String(), template)
+
+		// Apply the references to the chart
+		c.References = append(c.References, refs...)
+	}
+	return nil
+}
+
+// ProcessReferences ensures all referenced values exist in values.yaml.
+func (c *Chart) ProcessReferences() {
+	processedRefs := make(map[string]bool) // track processed references paths
+	templateRefs := make([]ValueRef, 0)    // final list of references to update
+
+	// Update values files with defaults
+	for _, ref := range c.References {
+		// Skip if we've already processed this reference
+		if processedRefs[ref.Path] {
+			continue
+		}
+
+		// iterate over all references with the same path
+		// and find the first default value if it exists
+		for _, r := range c.References {
+			if ref.Path == r.Path && r.DefaultValue != "" {
+				ref.DefaultValue = r.DefaultValue
+				break
 			}
+		}
 
-			// Check for values with single-quoted defaults
-			matches = defaultSingleQuoteRegex.FindAllStringSubmatch(line, -1)
-			for _, match := range matches {
-				defaultsInLine[match[1]] = match[2]
-			}
+		// Add this reference to the final list and mark as processed
+		templateRefs = append(templateRefs, ref)
+		processedRefs[ref.Path] = true
+	}
 
-			// Check for values with numeric defaults
-			matches = defaultNumericRegex.FindAllStringSubmatch(line, -1)
-			for _, match := range matches {
-				defaultsInLine[match[1]] = match[2]
-			}
+	// iterate over each values file
+	for i := range c.ValuesFiles {
+		file := &c.ValuesFiles[i] // Get pointer to existing ValueFile
 
-			// Update lastDefaults with any new defaults found in this line
-			for path, value := range defaultsInLine {
-				lastDefaults[path] = value
-			}
-
-			// Check for all value references (with or without defaults)
-			matches = valueRegex.FindAllStringSubmatch(line, -1)
-			for _, match := range matches {
-				path := match[1]
-				refKey := fmt.Sprintf("%s:%d:%s", template, lineNum, path)
-
-				if !seenRefs[refKey] {
-					seenRefs[refKey] = true
-					c.References = append(c.References, ValueRef{
-						Path:         path,
-						DefaultValue: lastDefaults[path], // Use the most recent default value
-						SourceFile:   template,
-						LineNumber:   lineNum + 1,
-					})
-				}
-			}
+		// iterate over each reference
+		for _, ref := range templateRefs {
+			// Always set the value, whether it exists or not
+			setNestedValue(file.Values, ref.Path, ref.DefaultValue)
+			file.Changed = true
 		}
 	}
+}
+
+// UpdateValueFiles ensures all referenced values exist in values.yaml.
+// It adds missing values with appropriate defaults and updates the file atomically.
+// The operation is skipped if no changes are needed.
+func (c *Chart) UpdateValueFiles() error {
+	// iterate over each values file
+	for i := range c.ValuesFiles {
+		file := &c.ValuesFiles[i] // Get pointer to existing ValueFile
+		if !file.Changed {
+			continue
+		}
+
+		// Write updated values to files
+		data, err := yaml.Marshal(file.Values)
+		if err != nil {
+			return fmt.Errorf("marshaling values: %w", err)
+		}
+
+		if err := os.WriteFile(file.Path, data, 0644); err != nil {
+			return fmt.Errorf("writing values file: %w", err)
+		}
+
+		if c.config.Verbose {
+			fmt.Printf("updated values in %s\n", file.Path)
+		}
+	}
+
 	return nil
 }
 
@@ -264,114 +284,27 @@ func setNestedValue(values map[string]any, path string, value string) {
 		}
 	}
 
-	// Set the final value
-	// Always store as string to ensure consistent types
+	// Set the final value (remove string conversion)
 	current[parts[len(parts)-1]] = value
 }
 
-// UpdateValues ensures all referenced values exist in values.yaml.
-// It adds missing values with appropriate defaults and updates the file atomically.
-// The operation is skipped if no changes are needed.
-func (c *Chart) UpdateValues() error {
-	// Create a map to store the last reference for each path
-	lastRefs := make(map[string]ValueRef)
-	for _, ref := range c.References {
-		lastRefs[ref.Path] = ref
-	}
+// Helper function to check if a value exists at the given path
+func valueExists(values map[string]any, path string) bool {
+	current := values
+	parts := strings.Split(path, ".")
 
-	// Now process only the last reference for each path
-	for _, ref := range lastRefs {
-		// If we have a default value from the template, always use it
-		if ref.DefaultValue != "" {
-			setNestedValue(c.Values, ref.Path, ref.DefaultValue)
-			c.Changed = true
-			continue
+	for i, part := range parts {
+		v, ok := current[part]
+		if !ok {
+			return false
 		}
-
-		// Check if value already exists
-		exists := false
-		current := c.Values
-		parts := strings.Split(ref.Path, ".")
-
-		for i, part := range parts {
-			if v, ok := current[part]; ok {
-				if i == len(parts)-1 {
-					exists = true
-					break
-				}
-				if nested, ok := v.(map[string]any); ok {
-					current = nested
-				} else {
-					break
-				}
-			} else {
-				break
-			}
+		if i == len(parts)-1 {
+			return true
 		}
-
-		// Only check other default sources if value doesn't exist
-		if !exists {
-			value := ""
-			// Check custom default values
-			lastPart := parts[len(parts)-1]
-			if customValue, ok := c.options.DefaultValues[lastPart]; ok {
-				value = customValue
-			} else if customValue, ok := c.options.DefaultValues[ref.Path]; ok {
-				value = customValue
-			} else {
-				// Finally check pattern-based defaults
-				for pattern, defaultValue := range DefaultOptions().DefaultValues {
-					if strings.HasSuffix(lastPart, pattern) {
-						value = defaultValue
-						break
-					}
-				}
-			}
-
-			if value != "" {
-				setNestedValue(c.Values, ref.Path, value)
-				c.Changed = true
-			}
+		current, ok = v.(map[string]any)
+		if !ok {
+			return false
 		}
 	}
-
-	if !c.Changed {
-		return nil
-	}
-
-	// Create directory if it doesn't exist
-	dir := filepath.Dir(c.ValuesFile)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("creating values directory: %w", err)
-	}
-
-	// Convert all numeric values to strings before marshaling
-	stringValues := make(map[string]any)
-	convertToStrings(c.Values, stringValues)
-
-	// Write updated values back to file
-	data, err := yaml.Marshal(stringValues)
-	if err != nil {
-		return fmt.Errorf("marshaling values: %w", err)
-	}
-
-	return os.WriteFile(c.ValuesFile, data, 0644)
-}
-
-// convertToStrings recursively converts all numeric values to strings
-func convertToStrings(in, out map[string]any) {
-	for k, v := range in {
-		switch val := v.(type) {
-		case map[string]any:
-			newMap := make(map[string]any)
-			convertToStrings(val, newMap)
-			out[k] = newMap
-		case int:
-			out[k] = fmt.Sprintf("%d", val)
-		case float64:
-			out[k] = fmt.Sprintf("%g", val)
-		default:
-			out[k] = v
-		}
-	}
+	return true
 }
