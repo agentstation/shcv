@@ -98,7 +98,7 @@ Error Handling:
 <a name="Version"></a>Version is the current version of shcv
 
 ```go
-const Version = "1.0.5"
+const Version = "1.0.6"
 ```
 
 <a name="Chart"></a>
@@ -166,13 +166,13 @@ func (c *Chart) ProcessReferences()
 ProcessReferences ensures all referenced values exist in values.yaml.
 
 <a name="Chart.UpdateValueFiles"></a>
-### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L237>)
+### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L239>)
 
 ```go
 func (c *Chart) UpdateValueFiles() error
 ```
 
-UpdateValueFiles ensures all referenced values exist in values.yaml. It adds missing values with appropriate defaults and updates the file atomically. The operation is skipped if no changes are needed.
+UpdateValueFiles ensures all referenced values exist in values.yaml. It adds missing values with appropriate defaults and updates the file. The operation is skipped if no changes are needed.
 
 <a name="Option"></a>
 ## type [Option](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L25>)
