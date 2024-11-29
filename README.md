@@ -17,7 +17,7 @@
 - Supports nested value structures (e.g., `{{ .Values.gateway.domain }}`)
 - Handles default values in templates (e.g., `{{ .Values.domain | default "api.example.com" }}`)
 - Creates missing values in values files with their default values
-- Preserves existing values and structure in your values files
+- Preserves existing values, structure, and data types in your values files
 - Provides line number and source file tracking for each reference
 - Uses atomic file operations to prevent data corruption
 - Provides robust error handling with detailed messages
@@ -122,7 +122,7 @@ Running `shcv .` will create/update `values.yaml`:
 name: "my-ingress"
 domain: "example.com"
 path: "/"
-port: "80"
+port: 80
 ```
 
 ## Requirements

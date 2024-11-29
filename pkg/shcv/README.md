@@ -53,7 +53,7 @@ Key features:
 - Supports nested value structures
 - Handles default values in templates
 - Creates missing values with their default values
-- Preserves existing values and structure
+- Preserves existing values, structure, and data types \(e.g., numbers, strings\)
 - Provides line number and source file tracking
 - Uses atomic file operations
 - Provides robust error handling
