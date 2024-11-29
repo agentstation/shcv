@@ -63,7 +63,8 @@ func TestRootCommand(t *testing.T) {
 			// Close pipe and restore stdout/stderr
 			w.Close()
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, copyErr := io.Copy(&buf, r)
+			require.NoError(t, copyErr)
 			output := buf.String()
 
 			if tt.wantErr {
@@ -91,7 +92,8 @@ func TestVersionFlag(t *testing.T) {
 
 	w.Close()
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, copyErr := io.Copy(&buf, r)
+	require.NoError(t, copyErr)
 	output := buf.String()
 
 	assert.Equal(t, shcv.Version+"\n", output)
@@ -110,7 +112,8 @@ func TestHelpFlag(t *testing.T) {
 
 	w.Close()
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, copyErr := io.Copy(&buf, r)
+	require.NoError(t, copyErr)
 	output := buf.String()
 
 	assert.Contains(t, output, "Usage:")
@@ -232,7 +235,7 @@ func TestProcessChart(t *testing.T) {
 				require.NoError(t, os.WriteFile(templatePath, []byte("{{ .Values.key }}\n"), 0644))
 				require.NoError(t, os.Chmod(templatePath, 0000))
 				return chartDir, func() {
-					os.Chmod(templatePath, 0644)
+					require.NoError(t, os.Chmod(templatePath, 0644))
 				}
 			},
 			wantErr:     true,
@@ -255,7 +258,7 @@ func TestProcessChart(t *testing.T) {
 				require.NoError(t, os.Remove(valuesPath))
 				require.NoError(t, os.Symlink("/nonexistent", valuesPath))
 				return chartDir, func() {
-					os.Remove(valuesPath)
+					require.NoError(t, os.Remove(valuesPath))
 				}
 			},
 			wantErr:     true,
@@ -389,7 +392,8 @@ func TestMain(t *testing.T) {
 			// Close write end of pipe and read all output
 			w.Close()
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, err := io.Copy(&buf, r)
+			require.NoError(t, err)
 			stderr := buf.String()
 
 			// Reset RootCmd for next test
