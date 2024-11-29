@@ -10,11 +10,17 @@
 
 `shcv` is a command-line tool and Go package that helps maintain Helm chart values by automatically synchronizing values files with the parameters used in your Helm templates. It scans all template files for `{{ .Values.* }}` expressions and ensures they are properly defined in your values files.
 
-## Requirements
+## Features
 
-- Go 1.21 or later
-- A valid Helm chart directory structure
-- Read/write permissions for the chart directory
+- Automatically detects all Helm value references in template files
+- Supports multiple values files
+- Supports nested value structures (e.g., `{{ .Values.gateway.domain }}`)
+- Handles default values in templates (e.g., `{{ .Values.domain | default "api.example.com" }}`)
+- Creates missing values in values files with their default values
+- Preserves existing values and structure in your values files
+- Provides line number and source file tracking for each reference
+- Uses atomic file operations to prevent data corruption
+- Provides robust error handling with detailed messages
 
 ## Installation
 
@@ -22,7 +28,7 @@
 go install github.com/agentstation/shcv@latest
 ```
 
-## CLI Usage
+## Quick Start
 
 ```bash
 # Process chart in current directory
@@ -31,47 +37,37 @@ shcv .
 # Process chart with verbose output
 shcv -v ./my-helm-chart
 
-# Show help
-shcv --help
-
 # Show version
 shcv --version
 ```
 
-### Verbose Output Format
+## Usage
 
-When using the `-v` or `--verbose` flag, the output includes:
-- Number of template files found
-- Number of value references discovered
-- For each reference:
-  - Full path (e.g., `gateway.domain`)
-  - Source file and line number
-  - Default value if specified
+### Command Line Interface
 
-Example verbose output:
-```
-Found 2 template files
-Found 5 value references
-- gateway.domain (from ingress.yaml:12)
-  default: api.example.com
-- service.port (from ingress.yaml:18)
-  default: 80
+The CLI provides a simple interface to process Helm charts:
+
+```bash
+shcv [flags] CHART_DIRECTORY
 ```
 
-## Package Usage
+Available flags:
+- `-v, --verbose`: Enable verbose output showing all found references
+- `--version`: Show version information
+- `-h, --help`: Show help information
 
-The core functionality is available as a Go package that you can use in your own programs:
+### Go Package
 
 ```go
 import "github.com/agentstation/shcv/pkg/shcv"
 
-// Create a new chart instance with default options
+// Create a new chart instance
 chart, err := shcv.NewChart("./my-chart")
 if err != nil {
     log.Fatal(err)
 }
 
-// Load and process the chart
+// Process the chart
 if err := chart.LoadValueFiles(); err != nil {
     log.Fatal(err)
 }
@@ -87,8 +83,13 @@ if err := chart.ProcessReferences(); err != nil {
 if err := chart.UpdateValueFiles(); err != nil {
     log.Fatal(err)
 }
+```
 
-// Or customize the behavior with functional options
+### Configuration Options
+
+The package provides functional options for customization:
+
+```go
 chart, err := shcv.NewChart("./my-chart",
     shcv.WithValuesFileNames([]string{"values.yaml", "values-prod.yaml"}),
     shcv.WithTemplatesDir("custom-templates"),
@@ -103,138 +104,52 @@ Given a template file `templates/ingress.yaml`:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ingress
-  namespace: gateway
-  annotations:
-    replicas: {{ .Values.deployment.replicas | default 3 }}
-    enabled: {{ .Values.features.monitoring.enabled | default "true" }}
+  name: {{ .Values.name | default "my-ingress" }}
 spec:
   rules:
-  - host: {{ .Values.gateway.domain | default "api.example.com" }}
+  - host: {{ .Values.domain | default "example.com" }}
     http:
       paths:
       - path: {{ .Values.path | default "/" }}
         backend:
           service:
-            name: {{ .Values.service.name }}
             port:
-              number: {{ .Values.service.port | default 80 }}
+              number: {{ .Values.port | default 80 }}
 ```
 
-Running `shcv` will create/update `values.yaml` with:
+Running `shcv .` will create/update `values.yaml`:
 ```yaml
-deployment:
-  replicas: "3"
-features:
-  monitoring:
-    enabled: "true"
-gateway:
-  domain: "api.example.com"
+name: "my-ingress"
+domain: "example.com"
 path: "/"
-service:
-  port: "80"
+port: "80"
 ```
 
-## Features
+## Requirements
 
-- Automatically detects all Helm value references in template files
-- Supports multiple values files
-- Supports nested value structures (e.g., `{{ .Values.gateway.domain }}`)
-- Handles default values in templates (e.g., `{{ .Values.domain | default "api.example.com" }}`)
-- Supports double-quoted, single-quoted, and numeric default values
-- Creates missing values in values files with their default values
-- Preserves existing values and structure in your values files
-- Provides line number and source file tracking for each reference
-- Configurable through functional options when used as a package
-- Atomic file operations ensure values files are never corrupted
-- Robust error handling with detailed error messages
-- Safe handling of concurrent chart updates
+- Go 1.21 or later
+- A valid Helm chart directory structure
+- Read/write permissions for the chart directory
 
 ## Error Handling
 
-The tool provides detailed error messages for common issues:
+The tool provides detailed error messages for:
 - Invalid chart directory structure
 - Missing or inaccessible templates directory
 - Permission issues with values files
-- Invalid YAML syntax in templates or values
+- Invalid YAML syntax
 - Concurrent file access conflicts
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Permission Denied**
-   - Ensure you have read/write permissions for the chart directory
-   - Check file ownership and permissions with `ls -l`
-
-2. **Templates Not Found**
-   - Verify your chart has a `templates` directory
-   - Check that template files have `.yaml`, `.yml`, or `.tpl` extensions
-
-3. **Values Not Updated**
-   - Ensure values.yaml is writable
-   - Check for syntax errors in your templates
-   - Use verbose mode (-v) to see what references were found
-
-4. **Concurrent Access**
-   - The tool uses atomic file operations to prevent corruption
-   - If you see "file busy" errors, wait and try again
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-### Development Setup
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-1. Clone the repository
-2. Install Devbox (recommended):
-   ```bash
-   make install-devbox
-   ```
-3. Start Devbox shell:
-   ```bash
-   make devbox
-   ```
-4. Install dependencies:
-   ```bash
-   make install
-   ```
-5. Run all checks:
-   ```bash
-   make check
-   ```
+## License
 
-### Development Commands
-
-```bash
-# Format code
-make fmt
-
-# Run tests
-make test
-
-# Run tests with coverage
-make coverage
-
-# Run linting
-make lint
-
-# Run all checks (vet, lint, test)
-make check
-
-# Build the binary
-make build
-
-# Generate documentation
-make generate
-
-# Clean up temporary files
-make clean
-```
-
-### Code Style
-
-- Follow standard Go code style and conventions
-- Add tests for new functionality
-- Update documentation for API changes
-- Use meaningful commit messages
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
