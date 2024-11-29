@@ -84,8 +84,12 @@ func processChart(chartDir string, verbose bool, out io.Writer) error {
 	return nil
 }
 
+// osExit is used to mock os.Exit in tests
+var osExit = os.Exit
+
 func main() {
 	if err := RootCmd.Execute(); err != nil {
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, err)
+		osExit(1)
 	}
 }
