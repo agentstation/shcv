@@ -11,6 +11,13 @@ type config struct {
 	Verbose bool
 }
 
+// newConfig creates a new config with the default options.
+func newConfig(opts []Option) *config {
+	c := defaultConfig()
+	c.apply(opts)
+	return c
+}
+
 // defaultConfig returns the default configuration options for Chart processing.
 // This includes standard file locations and common default values.
 func defaultConfig() *config {
@@ -18,6 +25,13 @@ func defaultConfig() *config {
 		ValuesFileName: []string{"values.yaml"},
 		TemplatesDir:   "templates",
 		Verbose:        false,
+	}
+}
+
+// apply applies the given options to the config.
+func (c *config) apply(opts []Option) {
+	for _, option := range opts {
+		option(c)
 	}
 }
 
@@ -43,12 +57,4 @@ func WithVerbose(verbose bool) Option {
 	return func(c *config) {
 		c.Verbose = verbose
 	}
-}
-
-// applyOptions applies the given options to the config.
-func applyOptions(c *config, opts []Option) *config {
-	for _, option := range opts {
-		option(c)
-	}
-	return c
 }

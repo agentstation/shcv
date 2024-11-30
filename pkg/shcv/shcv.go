@@ -66,9 +66,8 @@ func NewChart(dir string, opts ...Option) (*Chart, error) {
 		return nil, fmt.Errorf("invalid chart directory: %w", err)
 	}
 
-	// Create a new config, apply options, and update values files
-	config := defaultConfig()
-	config = applyOptions(config, opts)
+	// Create a new config with the given options
+	config := newConfig(opts)
 
 	// create a new chart and return it
 	chart := &Chart{
