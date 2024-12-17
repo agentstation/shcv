@@ -1182,13 +1182,15 @@ metadata:
 				require.NoError(t, err)
 			}
 
-			chart := &Chart{
-				ValuesFiles: []ValueFile{
-					{
-						Path:    filepath.Join(tempDir, "values.yaml"),
-						Values:  make(map[string]interface{}),
-						Changed: false,
-					},
+			// Create chart with proper config initialization
+			chart, err := NewChart(tempDir, WithVerbose(true))
+			require.NoError(t, err)
+
+			chart.ValuesFiles = []ValueFile{
+				{
+					Path:    filepath.Join(tempDir, "values.yaml"),
+					Values:  make(map[string]interface{}),
+					Changed: false,
 				},
 			}
 
@@ -1203,7 +1205,7 @@ metadata:
 				}
 			}
 
-			err := chart.injectDeploymentStrategy(filepath.Join(tempDir, tt.template))
+			err = chart.injectDeploymentStrategy(filepath.Join(tempDir, tt.template))
 			assert.NoError(t, err)
 
 			if tt.validate != nil {
