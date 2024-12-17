@@ -101,7 +101,7 @@ const Version = "1.0.6"
 ```
 
 <a name="Chart"></a>
-## type [Chart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L45-L56>)
+## type [Chart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L46-L57>)
 
 Chart represents a Helm chart structure and manages its values and templates. It provides functionality to scan templates for value references and ensure all referenced values are properly defined in values.yaml.
 
@@ -120,7 +120,7 @@ type Chart struct {
 ```
 
 <a name="NewChart"></a>
-### func [NewChart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L59>)
+### func [NewChart](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L60>)
 
 ```go
 func NewChart(dir string, opts ...Option) (*Chart, error)
@@ -156,7 +156,7 @@ func (c *Chart) ParseTemplates() error
 ParseTemplates scans all discovered templates for .Values references. It identifies both simple references and those with default values. The references are stored in the Chart's References slice.
 
 <a name="Chart.ProcessReferences"></a>
-### func \(\*Chart\) [ProcessReferences](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L196>)
+### func \(\*Chart\) [ProcessReferences](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L205>)
 
 ```go
 func (c *Chart) ProcessReferences()
@@ -165,7 +165,7 @@ func (c *Chart) ProcessReferences()
 ProcessReferences ensures all referenced values exist in values.yaml.
 
 <a name="Chart.UpdateValueFiles"></a>
-### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L239>)
+### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L421>)
 
 ```go
 func (c *Chart) UpdateValueFiles() error
@@ -174,7 +174,7 @@ func (c *Chart) UpdateValueFiles() error
 UpdateValueFiles ensures all referenced values exist in values.yaml. It adds missing values with appropriate defaults and updates the file. The operation is skipped if no changes are needed.
 
 <a name="Option"></a>
-## type [Option](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L25>)
+## type [Option](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L39>)
 
 Option is a functional option for configuring the Chart processing.
 
@@ -183,7 +183,7 @@ type Option func(*config)
 ```
 
 <a name="WithTemplatesDir"></a>
-### func [WithTemplatesDir](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L35>)
+### func [WithTemplatesDir](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L49>)
 
 ```go
 func WithTemplatesDir(dir string) Option
@@ -192,7 +192,7 @@ func WithTemplatesDir(dir string) Option
 WithTemplatesDir sets the templates directory.
 
 <a name="WithValuesFileNames"></a>
-### func [WithValuesFileNames](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L28>)
+### func [WithValuesFileNames](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L42>)
 
 ```go
 func WithValuesFileNames(names []string) Option
@@ -201,7 +201,7 @@ func WithValuesFileNames(names []string) Option
 WithValuesFileNames sets the values file names.
 
 <a name="WithVerbose"></a>
-### func [WithVerbose](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L42>)
+### func [WithVerbose](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/config.go#L56>)
 
 ```go
 func WithVerbose(verbose bool) Option
@@ -210,7 +210,7 @@ func WithVerbose(verbose bool) Option
 WithVerbose sets the verbose flag.
 
 <a name="ValueFile"></a>
-## type [ValueFile](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L33-L40>)
+## type [ValueFile](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L34-L41>)
 
 ValueFile represents a values file
 
@@ -226,7 +226,7 @@ type ValueFile struct {
 ```
 
 <a name="ValueRef"></a>
-## type [ValueRef](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L16-L25>)
+## type [ValueRef](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L17-L26>)
 
 ValueRef represents a Helm value reference found in templates. It tracks where values are used in templates and their default values if specified.
 
@@ -253,7 +253,7 @@ func ParseFile(content, templatePath string) []ValueRef
 ParseFile parses a template file and returns all value references
 
 <a name="ValueRef.ID"></a>
-### func \(\*ValueRef\) [ID](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L28>)
+### func \(\*ValueRef\) [ID](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L29>)
 
 ```go
 func (v *ValueRef) ID() string

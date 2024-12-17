@@ -19,6 +19,7 @@
 - Creates missing values in values files with their default values
 - Preserves existing values, structure, and data types in your values files
 - Provides line number and source file tracking for each reference
+- Automatically injects and manages Kubernetes deployment strategies
 - Uses atomic file operations to prevent data corruption
 - Provides robust error handling with detailed messages
 
@@ -123,6 +124,48 @@ name: "my-ingress"
 domain: "example.com"
 path: "/"
 port: 80
+```
+
+### Deployment Strategy Example
+
+For Kubernetes deployment manifests, `shcv` automatically injects deployment strategy configuration. Given a template file `templates/deployment.yaml`:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}
+    spec:
+      containers:
+      - name: {{ .Values.name }}
+        image: {{ .Values.image }}
+```
+
+Running `shcv .` will add deployment strategy configuration to `values.yaml`:
+```yaml
+deployment:
+  strategy:
+    type: "RollingUpdate"
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+```
+
+And update the deployment template with strategy configuration:
+```yaml
+spec:
+  strategy:
+    type: {{ .Values.deployment.strategy.type }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}
 ```
 
 ## Requirements

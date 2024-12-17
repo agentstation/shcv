@@ -1071,3 +1071,704 @@ func TestLoadValueFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestChart_InjectDeploymentStrategy(t *testing.T) {
+	tempDir := t.TempDir()
+
+	tests := []struct {
+		name     string
+		template string
+		setup    func(string) error
+		validate func(*testing.T, *Chart, string)
+	}{
+		{
+			name:     "deployment manifest",
+			template: "deployment.yaml",
+			setup: func(dir string) error {
+				content := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+spec:
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: test
+        image: test:latest`
+				return os.WriteFile(filepath.Join(dir, "deployment.yaml"), []byte(content), 0644)
+			},
+			validate: func(t *testing.T, chart *Chart, dir string) {
+				assert.True(t, chart.ValuesFiles[0].Changed)
+				strategy, ok := chart.ValuesFiles[0].Values["deployment"].(map[string]interface{})
+				assert.True(t, ok)
+				assert.NotNil(t, strategy["strategy"])
+				strategyConfig := strategy["strategy"].(map[string]interface{})
+				assert.Equal(t, "RollingUpdate", strategyConfig["type"])
+				rollingUpdate := strategyConfig["rollingUpdate"].(map[string]interface{})
+				assert.Equal(t, 1, rollingUpdate["maxSurge"])
+				assert.Equal(t, 0, rollingUpdate["maxUnavailable"])
+			},
+		},
+		{
+			name:     "non-deployment manifest",
+			template: "service.yaml",
+			setup: func(dir string) error {
+				content := `apiVersion: v1
+kind: Service
+metadata:
+  name: test-service
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080`
+				return os.WriteFile(filepath.Join(dir, "service.yaml"), []byte(content), 0644)
+			},
+			validate: func(t *testing.T, chart *Chart, dir string) {
+				assert.False(t, chart.ValuesFiles[0].Changed)
+				_, ok := chart.ValuesFiles[0].Values["deployment"]
+				assert.False(t, ok)
+			},
+		},
+		{
+			name:     "invalid yaml",
+			template: "invalid.yaml",
+			setup: func(dir string) error {
+				content := `invalid: yaml: :`
+				return os.WriteFile(filepath.Join(dir, "invalid.yaml"), []byte(content), 0644)
+			},
+			validate: func(t *testing.T, chart *Chart, dir string) {
+				assert.False(t, chart.ValuesFiles[0].Changed)
+			},
+		},
+		{
+			name:     "existing strategy",
+			template: "deployment.yaml",
+			setup: func(dir string) error {
+				content := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment`
+				return os.WriteFile(filepath.Join(dir, "deployment.yaml"), []byte(content), 0644)
+			},
+			validate: func(t *testing.T, chart *Chart, dir string) {
+				// Pre-populate values with existing strategy
+				chart.ValuesFiles[0].Values = map[string]interface{}{
+					"deployment": map[string]interface{}{
+						"strategy": map[string]interface{}{
+							"type": "Recreate",
+						},
+					},
+				}
+				chart.ValuesFiles[0].Changed = false // Reset the changed flag
+				err := chart.injectDeploymentStrategy(filepath.Join(dir, "deployment.yaml"))
+				assert.NoError(t, err)
+				assert.False(t, chart.ValuesFiles[0].Changed)
+				strategy := chart.ValuesFiles[0].Values["deployment"].(map[string]interface{})["strategy"].(map[string]interface{})
+				assert.Equal(t, "Recreate", strategy["type"])
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				err := tt.setup(tempDir)
+				require.NoError(t, err)
+			}
+
+			chart := &Chart{
+				ValuesFiles: []ValueFile{
+					{
+						Path:    filepath.Join(tempDir, "values.yaml"),
+						Values:  make(map[string]interface{}),
+						Changed: false,
+					},
+				},
+			}
+
+			if tt.name == "existing strategy" {
+				// Pre-populate values for the existing strategy test
+				chart.ValuesFiles[0].Values = map[string]interface{}{
+					"deployment": map[string]interface{}{
+						"strategy": map[string]interface{}{
+							"type": "Recreate",
+						},
+					},
+				}
+			}
+
+			err := chart.injectDeploymentStrategy(filepath.Join(tempDir, tt.template))
+			assert.NoError(t, err)
+
+			if tt.validate != nil {
+				tt.validate(t, chart, tempDir)
+			}
+		})
+	}
+}
+
+func TestUpdateDeploymentTemplate(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "basic deployment",
+			input: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: test
+        image: test:latest`,
+			expected: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  strategy:
+    type: {{ .Values.deployment.strategy.type }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: test
+        image: test:latest`,
+		},
+		{
+			name: "existing strategy",
+			input: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: test`,
+			expected: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: test`,
+		},
+		{
+			name: "no spec section",
+			input: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test`,
+			expected: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test`,
+		},
+		{
+			name: "complex deployment with includes",
+			input: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}-deployment
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: gateway
+  {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - name: gateway
+        image: {{ .Values.image }}`,
+			expected: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}-deployment
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: gateway
+  {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  strategy:
+    type: {{ .Values.deployment.strategy.type }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - name: gateway
+        image: {{ .Values.image }}`,
+		},
+		{
+			name: "deployment with existing strategy",
+			input: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: test`,
+			expected: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: test`,
+		},
+		{
+			name: "deployment with custom indentation",
+			input: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: test
+spec:
+    replicas: 3
+    selector:
+        matchLabels:
+            app: test`,
+			expected: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: test
+spec:
+    strategy:
+        type: {{ .Values.deployment.strategy.type }}
+        rollingUpdate:
+            maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}
+            maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}
+    replicas: 3
+    selector:
+        matchLabels:
+            app: test`,
+		},
+		{
+			name: "gateway deployment with complex structure",
+			input: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}-deployment
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: gateway
+  {{- include "gateway.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      app.kubernetes.io/instance: gateway
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/name: gateway
+      app.kubernetes.io/part-of: gateway
+    {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        app.kubernetes.io/instance: gateway
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/part-of: gateway
+      {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - env:
+        - name: ENV
+          value: {{ quote .Values.deployment.gateway.env.env }}
+        - name: LOG_LEVEL
+          value: {{ quote .Values.deployment.gateway.env.logLevel }}
+        - name: PORT
+          value: {{ quote .Values.deployment.gateway.env.port }}
+        - name: HOST
+          value: {{ quote .Values.deployment.gateway.env.host }}
+        - name: STARTUP_TIMEOUT
+          value: {{ quote .Values.deployment.gateway.env.startupTimeout }}
+        - name: SHUTDOWN_TIMEOUT
+          value: {{ quote .Values.deployment.gateway.env.shutdownTimeout }}
+        - name: STARTUP_CONN_RETRIES
+          value: {{ quote .Values.deployment.gateway.env.startupConnRetries }}
+        - name: STARTUP_CONN_TIMEOUT
+          value: {{ quote .Values.deployment.gateway.env.startupConnTimeout }}
+        - name: CORS_ALLOWED_ORIGINS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowedOrigins }}
+        - name: CORS_ALLOWED_METHODS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowedMethods }}
+        - name: CORS_ALLOWED_HEADERS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowedHeaders }}
+        - name: CORS_ALLOW_CREDENTIALS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowCredentials }}
+        - name: CORS_MAX_AGE
+          value: {{ quote .Values.deployment.gateway.env.corsMaxAge }}
+        - name: SBO_ADDR
+          value: {{ quote .Values.deployment.gateway.env.sboAddr }}
+        - name: POSTGRES_HOST
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresConn.connectionNameKey | default "POSTGRES_CONNECTION_NAME" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresConn.name | default "postgres-conn-workload" }}
+        - name: POSTGRES_PRIVATE_IP
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresConn.privateIpKey | default "POSTGRES_PRIVATE_IP" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresConn.name | default "postgres-conn-workload" }}
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresCreds.userKey | default "POSTGRES_AGENTSTATION_USER" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresCreds.name | default "postgres-creds-workload" }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresCreds.passwordKey | default "POSTGRES_AGENTSTATION_PASSWORD" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresCreds.name | default "postgres-creds-workload" }}
+        - name: POSTGRES_DB
+          value: {{ quote .Values.deployment.gateway.env.postgresDb }}
+        - name: POSTGRES_SEARCH_PATH
+          value: {{ quote .Values.deployment.gateway.env.postgresSearchPath }}
+        - name: POSTGRES_SSL_MODE
+          value: {{ quote .Values.deployment.gateway.env.postgresSslMode }}
+        - name: POSTGRES_SSL_CERT
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresConn.sslCertKey | default "POSTGRES_SERVER_CA_CERT" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresConn.name | default "postgres-conn-workload" }}
+        - name: REDIS_ADDR
+          value: {{ quote .Values.deployment.gateway.env.redisAddr }}
+        - name: GA_MEASUREMENT_ID
+          value: {{ quote .Values.deployment.gateway.env.gaMeasurementId }}
+        - name: GA_API_SECRET
+          value: {{ quote .Values.deployment.gateway.env.gaApiSecret }}
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        image: {{ .Values.deployment.gateway.image.repository }}:{{ .Values.deployment.gateway.image.tag | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.deployment.gateway.imagePullPolicy }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: gateway
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources: {{- toYaml .Values.deployment.gateway.resources | nindent 10 }}
+      serviceAccountName: {{ include "gateway.fullname" . }}-sa`,
+			expected: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}-deployment
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: gateway
+  {{- include "gateway.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  strategy:
+    type: {{ .Values.deployment.strategy.type }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      app.kubernetes.io/instance: gateway
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/name: gateway
+      app.kubernetes.io/part-of: gateway
+    {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        app.kubernetes.io/instance: gateway
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/part-of: gateway
+      {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - env:
+        - name: ENV
+          value: {{ quote .Values.deployment.gateway.env.env }}
+        - name: LOG_LEVEL
+          value: {{ quote .Values.deployment.gateway.env.logLevel }}
+        - name: PORT
+          value: {{ quote .Values.deployment.gateway.env.port }}
+        - name: HOST
+          value: {{ quote .Values.deployment.gateway.env.host }}
+        - name: STARTUP_TIMEOUT
+          value: {{ quote .Values.deployment.gateway.env.startupTimeout }}
+        - name: SHUTDOWN_TIMEOUT
+          value: {{ quote .Values.deployment.gateway.env.shutdownTimeout }}
+        - name: STARTUP_CONN_RETRIES
+          value: {{ quote .Values.deployment.gateway.env.startupConnRetries }}
+        - name: STARTUP_CONN_TIMEOUT
+          value: {{ quote .Values.deployment.gateway.env.startupConnTimeout }}
+        - name: CORS_ALLOWED_ORIGINS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowedOrigins }}
+        - name: CORS_ALLOWED_METHODS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowedMethods }}
+        - name: CORS_ALLOWED_HEADERS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowedHeaders }}
+        - name: CORS_ALLOW_CREDENTIALS
+          value: {{ quote .Values.deployment.gateway.env.corsAllowCredentials }}
+        - name: CORS_MAX_AGE
+          value: {{ quote .Values.deployment.gateway.env.corsMaxAge }}
+        - name: SBO_ADDR
+          value: {{ quote .Values.deployment.gateway.env.sboAddr }}
+        - name: POSTGRES_HOST
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresConn.connectionNameKey | default "POSTGRES_CONNECTION_NAME" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresConn.name | default "postgres-conn-workload" }}
+        - name: POSTGRES_PRIVATE_IP
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresConn.privateIpKey | default "POSTGRES_PRIVATE_IP" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresConn.name | default "postgres-conn-workload" }}
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresCreds.userKey | default "POSTGRES_AGENTSTATION_USER" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresCreds.name | default "postgres-creds-workload" }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresCreds.passwordKey | default "POSTGRES_AGENTSTATION_PASSWORD" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresCreds.name | default "postgres-creds-workload" }}
+        - name: POSTGRES_DB
+          value: {{ quote .Values.deployment.gateway.env.postgresDb }}
+        - name: POSTGRES_SEARCH_PATH
+          value: {{ quote .Values.deployment.gateway.env.postgresSearchPath }}
+        - name: POSTGRES_SSL_MODE
+          value: {{ quote .Values.deployment.gateway.env.postgresSslMode }}
+        - name: POSTGRES_SSL_CERT
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.deployment.gateway.secrets.postgresConn.sslCertKey | default "POSTGRES_SERVER_CA_CERT" }}
+              name: {{ .Values.deployment.gateway.secrets.postgresConn.name | default "postgres-conn-workload" }}
+        - name: REDIS_ADDR
+          value: {{ quote .Values.deployment.gateway.env.redisAddr }}
+        - name: GA_MEASUREMENT_ID
+          value: {{ quote .Values.deployment.gateway.env.gaMeasurementId }}
+        - name: GA_API_SECRET
+          value: {{ quote .Values.deployment.gateway.env.gaApiSecret }}
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        image: {{ .Values.deployment.gateway.image.repository }}:{{ .Values.deployment.gateway.image.tag | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.deployment.gateway.imagePullPolicy }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: gateway
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources: {{- toYaml .Values.deployment.gateway.resources | nindent 10 }}
+      serviceAccountName: {{ include "gateway.fullname" . }}-sa`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := string(updateDeploymentTemplate([]byte(tt.input)))
+			if result != tt.expected {
+				t.Errorf("Expected:\n%s\n\nGot:\n%s", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGatewayDeploymentTemplate(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+
+	// Create test files
+	deploymentPath := filepath.Join(tempDir, "templates", "deployment.yaml")
+	valuesPath := filepath.Join(tempDir, "values.yaml")
+
+	// Create directories
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "templates"), 0755))
+
+	// Write the deployment template
+	deploymentContent := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}-deployment
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: gateway
+  {{- include "gateway.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      app.kubernetes.io/instance: gateway
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/name: gateway
+      app.kubernetes.io/part-of: gateway
+    {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        app.kubernetes.io/instance: gateway
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/part-of: gateway
+      {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - env:
+        - name: ENV
+          value: {{ quote .Values.deployment.gateway.env.env }}`
+
+	require.NoError(t, os.WriteFile(deploymentPath, []byte(deploymentContent), 0644))
+
+	// Write values.yaml
+	valuesContent := `deployment:
+  replicas: 1
+  gateway:
+    env:
+      env: "production"`
+
+	require.NoError(t, os.WriteFile(valuesPath, []byte(valuesContent), 0644))
+
+	// Create chart with verbose mode
+	chart, err := NewChart(tempDir, WithVerbose(true))
+	require.NoError(t, err)
+
+	// Load values
+	require.NoError(t, chart.LoadValueFiles())
+
+	// Debug: Print initial values
+	t.Logf("Initial values: %+v", chart.ValuesFiles[0].Values)
+
+	// Set up templates manually
+	chart.Templates = []string{deploymentPath}
+
+	// Process references
+	chart.ProcessReferences()
+
+	// Debug: Print values after processing
+	t.Logf("Values after processing: %+v", chart.ValuesFiles[0].Values)
+
+	// Debug: Print deployment section
+	if deployment, ok := chart.ValuesFiles[0].Values["deployment"].(map[string]interface{}); ok {
+		t.Logf("Deployment section: %+v", deployment)
+		if strategy, ok := deployment["strategy"].(map[string]interface{}); ok {
+			t.Logf("Strategy section: %+v", strategy)
+		} else {
+			t.Log("No strategy section found")
+		}
+	} else {
+		t.Log("No deployment section found")
+	}
+
+	// Verify the deployment strategy was added to values.yaml
+	deployment, ok := chart.ValuesFiles[0].Values["deployment"].(map[string]interface{})
+	require.True(t, ok, "deployment section should exist in values")
+
+	strategy, ok := deployment["strategy"].(map[string]interface{})
+	require.True(t, ok, "strategy section should exist in deployment")
+
+	assert.Equal(t, "RollingUpdate", strategy["type"], "strategy type should be RollingUpdate")
+
+	rollingUpdate, ok := strategy["rollingUpdate"].(map[string]interface{})
+	require.True(t, ok, "rollingUpdate section should exist in strategy")
+	assert.Equal(t, 1, rollingUpdate["maxSurge"], "maxSurge should be 1")
+	assert.Equal(t, 0, rollingUpdate["maxUnavailable"], "maxUnavailable should be 0")
+
+	// Read the updated deployment file
+	updatedContent, err := os.ReadFile(deploymentPath)
+	require.NoError(t, err)
+
+	// Debug: Print updated content
+	t.Logf("Updated deployment content:\n%s", string(updatedContent))
+
+	// Verify the strategy section was added to the deployment template
+	assert.Contains(t, string(updatedContent), "strategy:", "deployment should contain strategy section")
+	assert.Contains(t, string(updatedContent), "type: {{ .Values.deployment.strategy.type }}", "deployment should contain strategy type")
+	assert.Contains(t, string(updatedContent), "maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}", "deployment should contain maxSurge")
+	assert.Contains(t, string(updatedContent), "maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}", "deployment should contain maxUnavailable")
+}

@@ -1,0 +1,5 @@
+deployment:
+  replicas: 1
+  gateway:
+    env:
+      env: "production" 

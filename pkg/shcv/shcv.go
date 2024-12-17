@@ -2,6 +2,7 @@ package shcv
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
@@ -191,12 +192,28 @@ func (c *Chart) ParseTemplates() error {
 	return nil
 }
 
+// defaultDeploymentStrategy represents the default deployment strategy configuration
+var defaultDeploymentStrategy = map[string]interface{}{
+	"type": "RollingUpdate",
+	"rollingUpdate": map[string]interface{}{
+		"maxSurge":       1,
+		"maxUnavailable": 0,
+	},
+}
+
 // ProcessReferences ensures all referenced values exist in values.yaml.
 func (c *Chart) ProcessReferences() {
+	// First pass: process deployment strategy for deployment manifests
+	for _, template := range c.Templates {
+		if err := c.injectDeploymentStrategy(template); err != nil && c.config.Verbose {
+			fmt.Printf("warning: failed to process deployment strategy for %s: %v\n", template, err)
+		}
+	}
+
 	processedRefs := make(map[string]bool) // track processed references paths
 	templateRefs := make([]ValueRef, 0)    // final list of references to update
 
-	// Update values files with defaults
+	// Second pass: collect all references and find default values
 	for _, ref := range c.References {
 		// Skip if we've already processed this reference
 		if processedRefs[ref.Path] {
@@ -217,7 +234,7 @@ func (c *Chart) ProcessReferences() {
 		processedRefs[ref.Path] = true
 	}
 
-	// iterate over each values file
+	// Third pass: process all other references
 	for i := range c.ValuesFiles {
 		file := &c.ValuesFiles[i] // Get pointer to existing ValueFile
 
@@ -230,6 +247,230 @@ func (c *Chart) ProcessReferences() {
 			}
 		}
 	}
+}
+
+// injectDeploymentStrategy detects if a template is a Kubernetes Deployment and injects strategy values
+func (c *Chart) injectDeploymentStrategy(templatePath string) error {
+	content, err := os.ReadFile(templatePath)
+	if err != nil {
+		return fmt.Errorf("reading template: %w", err)
+	}
+
+	// Quick check if this might be a deployment
+	if !bytes.Contains(content, []byte("kind: Deployment")) {
+		return nil
+	}
+
+	// Parse YAML to confirm it's a deployment
+	// First, remove Helm template directives that might interfere with YAML parsing
+	cleanContent := removeHelmTemplates(content)
+
+	var manifest struct {
+		Kind string `yaml:"kind"`
+	}
+	if err := yaml.Unmarshal(cleanContent, &manifest); err != nil {
+		return fmt.Errorf("parsing manifest: %w", err)
+	}
+
+	if manifest.Kind != "Deployment" {
+		return nil
+	}
+
+	if c.config.Verbose {
+		fmt.Printf("Found deployment manifest in %s\n", templatePath)
+	}
+
+	// Add deployment strategy values if they don't exist
+	for i := range c.ValuesFiles {
+		file := &c.ValuesFiles[i]
+
+		// Initialize values map if needed
+		if file.Values == nil {
+			file.Values = make(map[string]interface{})
+		}
+
+		if c.config.Verbose {
+			fmt.Printf("Processing values file: %s\n", file.Path)
+			fmt.Printf("Current values: %+v\n", file.Values)
+		}
+
+		// Get or create deployment map while preserving existing structure
+		var deployment map[string]interface{}
+		if existingDeployment, ok := file.Values["deployment"]; ok {
+			if c.config.Verbose {
+				fmt.Printf("Found existing deployment section: %+v\n", existingDeployment)
+			}
+			if deploymentMap, ok := existingDeployment.(map[string]interface{}); ok {
+				deployment = deploymentMap
+			} else {
+				deployment = make(map[string]interface{})
+				file.Values["deployment"] = deployment
+			}
+		} else {
+			deployment = make(map[string]interface{})
+			file.Values["deployment"] = deployment
+		}
+
+		// Check if strategy exists
+		if _, hasStrategy := deployment["strategy"]; !hasStrategy {
+			if c.config.Verbose {
+				fmt.Printf("Adding strategy section to deployment\n")
+			}
+			// Create a deep copy of defaultDeploymentStrategy
+			strategy := make(map[string]interface{})
+			for k, v := range defaultDeploymentStrategy {
+				if m, ok := v.(map[string]interface{}); ok {
+					// Deep copy nested map
+					strategy[k] = make(map[string]interface{})
+					for k2, v2 := range m {
+						strategy[k].(map[string]interface{})[k2] = v2
+					}
+				} else {
+					strategy[k] = v
+				}
+			}
+			deployment["strategy"] = strategy
+			file.Changed = true
+
+			if c.config.Verbose {
+				fmt.Printf("Updated deployment section: %+v\n", deployment)
+			}
+
+			// Only update the template if we added new values
+			updatedContent := updateDeploymentTemplate(content)
+			if err := os.WriteFile(templatePath, updatedContent, 0644); err != nil {
+				return fmt.Errorf("updating template: %w", err)
+			}
+		} else if c.config.Verbose {
+			fmt.Printf("Strategy section already exists\n")
+		}
+	}
+
+	return nil
+}
+
+// removeHelmTemplates removes Helm template directives from YAML content
+func removeHelmTemplates(content []byte) []byte {
+	lines := strings.Split(string(content), "\n")
+	var cleanLines []string
+
+	for _, line := range lines {
+		// Skip lines with Helm template directives
+		if strings.Contains(line, "{{") || strings.Contains(line, "}}") {
+			continue
+		}
+		// Skip lines with Helm template comments
+		if strings.Contains(line, "{{-") || strings.Contains(line, "-}}") {
+			continue
+		}
+		cleanLines = append(cleanLines, line)
+	}
+
+	return []byte(strings.Join(cleanLines, "\n"))
+}
+
+// updateDeploymentTemplate adds the strategy configuration to a deployment template
+func updateDeploymentTemplate(content []byte) []byte {
+	// Split the content into lines
+	lines := strings.Split(string(content), "\n")
+
+	// Find the spec: line and its indentation
+	specIndex := -1
+	specIndent := ""
+	strategyExists := false
+	inSpec := false
+	inTemplate := false
+	templateDepth := 0
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Track template section depth
+		if strings.Contains(line, "template:") {
+			templateDepth++
+			if templateDepth == 1 {
+				inTemplate = true
+			}
+			continue
+		}
+
+		// Track when we're in the main spec section
+		if trimmed == "spec:" {
+			if templateDepth == 0 {
+				specIndex = i
+				specIndent = line[:len(line)-len(trimmed)]
+				inSpec = true
+			}
+			continue
+		}
+
+		// Only look for strategy within the main spec section
+		if inSpec && !inTemplate {
+			if strings.HasPrefix(trimmed, "strategy:") {
+				strategyExists = true
+				break
+			}
+			// If we hit a line with less indentation than spec, we're out of the main spec
+			if len(line) > 0 {
+				currentIndent := line[:len(line)-len(trimmed)]
+				if len(currentIndent) <= len(specIndent) {
+					inSpec = false
+				}
+			}
+		}
+
+		// Track template section depth
+		if inTemplate {
+			currentIndent := len(line) - len(strings.TrimLeft(line, " "))
+			if currentIndent <= len(specIndent) {
+				templateDepth--
+				if templateDepth == 0 {
+					inTemplate = false
+				}
+			}
+		}
+	}
+
+	// If strategy already exists or we can't find spec, return unchanged
+	if strategyExists || specIndex == -1 {
+		return content
+	}
+
+	// Find the indentation of the first item under spec
+	baseIndent := ""
+	indentWidth := 2 // Default indent width
+	for i := specIndex + 1; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "{{") {
+			continue
+		}
+		if len(line) > len(trimmed) {
+			baseIndent = line[:len(line)-len(trimmed)]
+			indentWidth = len(baseIndent) - len(specIndent)
+			break
+		}
+	}
+	if baseIndent == "" {
+		baseIndent = specIndent + strings.Repeat(" ", indentWidth)
+	}
+
+	// Create the strategy section with proper indentation
+	strategySection := []string{
+		baseIndent + "strategy:",
+		baseIndent + strings.Repeat(" ", indentWidth) + "type: {{ .Values.deployment.strategy.type }}",
+		baseIndent + strings.Repeat(" ", indentWidth) + "rollingUpdate:",
+		baseIndent + strings.Repeat(" ", indentWidth*2) + "maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}",
+		baseIndent + strings.Repeat(" ", indentWidth*2) + "maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}",
+	}
+
+	// Insert the strategy section right after spec:
+	result := make([]string, 0, len(lines)+len(strategySection))
+	result = append(result, lines[:specIndex+1]...)
+	result = append(result, strategySection...)
+	result = append(result, lines[specIndex+1:]...)
+
+	return []byte(strings.Join(result, "\n"))
 }
 
 // UpdateValueFiles ensures all referenced values exist in values.yaml.

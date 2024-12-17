@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}-deployment
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: gateway
+  {{- include "gateway.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      app.kubernetes.io/instance: gateway
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/name: gateway
+      app.kubernetes.io/part-of: gateway
+    {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        app.kubernetes.io/instance: gateway
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/part-of: gateway
+      {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - env:
+        - name: ENV
+          value: {{ quote .Values.deployment.gateway.env.env }} 
