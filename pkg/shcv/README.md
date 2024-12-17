@@ -97,7 +97,7 @@ Requirements:
 <a name="Version"></a>Version is the current version of shcv
 
 ```go
-const Version = "1.0.6"
+const Version = "1.0.7"
 ```
 
 <a name="Chart"></a>
@@ -165,7 +165,7 @@ func (c *Chart) ProcessReferences()
 ProcessReferences ensures all referenced values exist in values.yaml.
 
 <a name="Chart.UpdateValueFiles"></a>
-### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L421>)
+### func \(\*Chart\) [UpdateValueFiles](<https://github.com/agentstation/shcv/blob/master/pkg/shcv/pkg/shcv/shcv.go#L479>)
 
 ```go
 func (c *Chart) UpdateValueFiles() error
